@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.nio.file.Paths;
 
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api")
 public class AnalysisController {
