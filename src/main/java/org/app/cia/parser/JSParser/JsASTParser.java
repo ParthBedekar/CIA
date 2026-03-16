@@ -3,9 +3,9 @@ package org.app.cia.parser.JSParser;
 import org.app.cia.parser.CodeUnit;
 import org.app.cia.parser.Enums.Language;
 import org.jspecify.annotations.NonNull;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JacksonException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -74,24 +74,24 @@ public class JsASTParser {
     }
 
     public CodeUnit convert(JsonNode node){
-        String filename=node.get("filename").asString();
-        CodeUnit cu=new CodeUnit(filename, Language.JS, Paths.get(node.get("filepath").asString()));
+        String filename=node.get("filename").asText();
+        CodeUnit cu=new CodeUnit(filename, Language.JS, Paths.get(node.get("filepath").asText()));
 
         for(JsonNode item: node.get("imports")){
-            cu.addImport(item.asString());
+            cu.addImport(item.asText());
         }
         for(JsonNode item: node.get("methods")){
-            cu.addMethod(item.asString());
+            cu.addMethod(item.asText());
         }
         for(JsonNode item: node.get("methodCalls")){
-            cu.addMethodCall(item.asString());
+            cu.addMethodCall(item.asText());
         }
         for(JsonNode item: node.get("classes")){
-            cu.addClass(item.asString());
+            cu.addClass(item.asText());
         }
         for(JsonNode item : node.get("inheritance")) {
-            String className = item.get("className").asString();
-            String ext = item.get("extends").asString();
+            String className = item.get("className").asText();
+            String ext = item.get("extends").asText();
             CodeUnit.ParentData data=new CodeUnit.ParentData(className);
             data.setExtension(ext);
             cu.configureInheritance(data);

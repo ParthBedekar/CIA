@@ -8,7 +8,6 @@ import org.jgrapht.graph.DefaultDirectedGraph;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 public class DependencyGraph {
 
@@ -36,17 +35,17 @@ public class DependencyGraph {
                 }
             }
             for(String imp:cu.getImports()){
-                if(importMap.containsKey(imp)){
+                if(importMap.containsKey(imp) && !importMap.get(imp).equals(cu)){
                     Edge edge=new Edge(cu,importMap.get(imp),EdgeLabel.IMPORT);
                     result.addEdge(cu,importMap.get(imp),edge);
                 }
             }
             for(CodeUnit.ParentData pd:cu.getInheritance()){
-                if(pd!=null && classMap.containsKey(pd.getExtension())){
+                if(pd != null && pd.getExtension() != null && classMap.containsKey(pd.getExtension())){
                     Edge edge=new Edge(cu,classMap.get(pd.getExtension()),EdgeLabel.INHERITANCE);
                     result.addEdge(cu,classMap.get(pd.getExtension()),edge);
                 }
-                for(String impl : Objects.requireNonNull(pd).getImplementations()){
+                for(String impl : pd.getImplementations()){
                     if(classMap.containsKey(impl)){
                         Edge edge=new Edge(cu,classMap.get(impl),EdgeLabel.IMPLEMENTATION);
                         result.addEdge(cu,classMap.get(impl),edge);

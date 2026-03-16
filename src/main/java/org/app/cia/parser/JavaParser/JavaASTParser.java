@@ -1,5 +1,6 @@
 package org.app.cia.parser.JavaParser;
 
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
@@ -28,6 +29,7 @@ public class JavaASTParser extends VoidVisitorAdapter<Void>{
         cdu=new CodeUnit(filename, Language.JAVA,filePath);
         CompilationUnit cu;
         try {
+            StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
             cu=StaticJavaParser.parse(filePath.toFile());
         } catch (FileNotFoundException e) {
             throw new RuntimeException("File Not Found");

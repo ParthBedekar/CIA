@@ -22,9 +22,11 @@ public class GitManager {
 
     public Path cloneRepo(){
 
-        String path=baseDirectory.toString();
+        int idx = repoUrl.lastIndexOf("/");
+        String folderName = repoUrl.substring(idx + 1, repoUrl.lastIndexOf(".git"));
+        Path cloneDest = Paths.get(baseDirectory.toString(), folderName);
 
-        ProcessBuilder cloner=new ProcessBuilder("git","clone",repoUrl,path);
+        ProcessBuilder cloner = new ProcessBuilder("git", "clone", repoUrl, cloneDest.toString());
         cloner.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         cloner.redirectError(ProcessBuilder.Redirect.DISCARD);
         Process clonerProcess;
@@ -43,10 +45,9 @@ public class GitManager {
         if(exitCode!=0){
             throw new GitOperationException("Failed to clone repository: repoUrl exited with code "+exitCode);
         }
-        int idx=repoUrl.lastIndexOf("/");
-        String folderName=repoUrl.substring(idx+1,repoUrl.lastIndexOf(".git"));
 
-        return Paths.get(path,folderName);
+
+        return cloneDest;
 
     }
 
