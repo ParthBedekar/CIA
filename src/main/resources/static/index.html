@@ -4,22 +4,26 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Rippler AST — Change Impact Analyzer</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
     <style>
         :root {
-            --bg:      #0a0a0f;
-            --surface: #111118;
-            --card:    #16161f;
-            --border:  #23232f;
-            --accent:  #7c6af7;
-            --accent2: #f76a8c;
-            --green:   #4af0a0;
-            --red:     #f76a6a;
-            --yellow:  #f7c128;
-            --text:    #e8e8f0;
-            --muted:   #55556a;
-            --mono:    'JetBrains Mono', monospace;
-            --sans:    'Syne', sans-serif;
+            --bg:      #0b0b10;
+            --surface: #0f0f16;
+            --card:    #13131c;
+            --card2:   #171722;
+            --border:  #1e1e2e;
+            --border2: #262636;
+            --accent:  #6c5ce7;
+            --accent2: #e84393;
+            --green:   #00e5a0;
+            --red:     #ff5f72;
+            --yellow:  #ffc142;
+            --blue:    #4d9fff;
+            --text:    #dcdcf0;
+            --muted:   #4a4a6a;
+            --muted2:  #6a6a8a;
+            --mono:    'IBM Plex Mono', monospace;
+            --sans:    'IBM Plex Sans', sans-serif;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,6 +34,7 @@
             font-family: var(--sans);
             min-height: 100vh;
             overflow-x: hidden;
+            font-size: 13px;
         }
 
         body::before {
@@ -37,131 +42,122 @@
             position: fixed;
             inset: 0;
             background-image:
-                    linear-gradient(rgba(124,106,247,0.025) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(124,106,247,0.025) 1px, transparent 1px);
-            background-size: 48px 48px;
+                    linear-gradient(rgba(108,92,231,0.018) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(108,92,231,0.018) 1px, transparent 1px);
+            background-size: 32px 32px;
             pointer-events: none;
             z-index: 0;
         }
 
         .blob {
-            position: fixed;
-            border-radius: 50%;
-            filter: blur(140px);
-            pointer-events: none;
-            z-index: 0;
-            opacity: 0.10;
+            position: fixed; border-radius: 50%;
+            filter: blur(160px); pointer-events: none; z-index: 0;
         }
-        .blob-1 { width: 700px; height: 700px; background: var(--accent); top: -300px; left: -150px; }
-        .blob-2 { width: 500px; height: 500px; background: var(--accent2); bottom: -150px; right: -100px; }
+        .blob-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; opacity: 0.07; }
+        .blob-2 { width: 400px; height: 400px; background: var(--accent2); bottom: -100px; right: -50px; opacity: 0.06; }
 
+        /* ── Header ── */
         header {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            padding: 18px 48px;
+            position: sticky; top: 0; z-index: 100;
+            padding: 14px 32px;
             border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            background: rgba(10,10,15,0.85);
-            backdrop-filter: blur(12px);
+            display: flex; align-items: center; gap: 12px;
+            background: rgba(11,11,16,0.92);
+            backdrop-filter: blur(16px);
         }
 
         .logo-mark {
-            width: 34px; height: 34px;
+            width: 30px; height: 30px;
             background: linear-gradient(135deg, var(--accent), var(--accent2));
-            border-radius: 8px;
+            border-radius: 7px;
             display: flex; align-items: center; justify-content: center;
-            font-family: var(--mono); font-weight: 700; font-size: 13px; color: #fff;
+            font-family: var(--mono); font-weight: 600; font-size: 12px; color: #fff;
             flex-shrink: 0;
         }
 
-        .logo-text { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+        .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+        .logo-divider { color: var(--border2); margin: 0 4px; }
+        .logo-sub-text { font-family: var(--mono); font-size: 10px; color: var(--muted2); letter-spacing: 0.5px; }
 
-        .header-right {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 
         .status-pill {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-family: var(--mono);
-            font-size: 11px;
-            color: var(--muted);
+            display: flex; align-items: center; gap: 6px;
+            font-family: var(--mono); font-size: 10px; color: var(--muted2);
+            padding: 4px 10px; border: 1px solid var(--border); border-radius: 20px;
+            background: var(--surface);
         }
 
         .status-dot {
-            width: 7px; height: 7px;
-            border-radius: 50%;
-            background: var(--muted);
+            width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
             transition: background 0.3s, box-shadow 0.3s;
         }
-        .status-dot.online  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
-        .status-dot.running { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); animation: pulse 1s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        .status-dot.online  { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .status-dot.running { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); animation: pulse 1s infinite; }
+        .status-dot.error   { background: var(--red); box-shadow: 0 0 8px var(--red); }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-        .logo-sub {
+        .version-tag {
             font-family: var(--mono); font-size: 10px; color: var(--muted);
-            letter-spacing: 2px; text-transform: uppercase;
-            padding: 3px 10px; border: 1px solid var(--border); border-radius: 20px;
+            letter-spacing: 1px; text-transform: uppercase;
         }
 
+        /* ── Layout ── */
         .layout {
-            position: relative;
-            z-index: 10;
+            position: relative; z-index: 10;
             display: grid;
-            grid-template-columns: 340px 1fr;
-            min-height: calc(100vh - 71px);
+            grid-template-columns: 300px 1fr;
+            min-height: calc(100vh - 59px);
         }
 
+        /* ── Left panel ── */
         .left-panel {
             border-right: 1px solid var(--border);
-            padding: 28px 22px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            background: rgba(17,17,24,0.4);
+            padding: 20px 18px;
+            display: flex; flex-direction: column; gap: 16px;
+            background: rgba(15,15,22,0.6);
             overflow-y: auto;
         }
 
-        .panel-label {
-            font-family: var(--mono); font-size: 10px; color: var(--accent);
-            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px;
+        .section-head {
+            font-family: var(--mono); font-size: 9px; color: var(--accent);
+            letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
         }
+        .section-head::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-        .field { margin-bottom: 12px; }
-
+        .field { margin-bottom: 10px; }
         .field label {
-            display: block; font-size: 11px; font-family: var(--mono);
-            color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px;
+            display: block; font-size: 10px; font-family: var(--mono);
+            color: var(--muted2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px;
         }
 
         .field input {
             width: 100%; background: var(--surface); border: 1px solid var(--border);
-            border-radius: 8px; padding: 10px 13px; color: var(--text);
-            font-family: var(--mono); font-size: 12px; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+            border-radius: 7px; padding: 9px 12px; color: var(--text);
+            font-family: var(--mono); font-size: 11px; outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,106,247,0.1); }
+        .field input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(108,92,231,0.1);
+        }
         .field input::placeholder { color: var(--muted); }
 
         .analyze-btn {
-            width: 100%; background: linear-gradient(135deg, var(--accent), #9b6af7);
-            border: none; border-radius: 10px; padding: 13px; color: #fff;
-            font-family: var(--sans); font-size: 14px; font-weight: 700; cursor: pointer;
-            transition: opacity 0.2s, transform 0.1s; display: flex;
-            align-items: center; justify-content: center; gap: 8px;
+            width: 100%; background: linear-gradient(135deg, var(--accent) 0%, #8b7cf8 100%);
+            border: none; border-radius: 8px; padding: 11px; color: #fff;
+            font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 7px;
+            box-shadow: 0 4px 16px rgba(108,92,231,0.3);
         }
-        .analyze-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+        .analyze-btn:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(108,92,231,0.4); }
         .analyze-btn:active { transform: translateY(0); }
-        .analyze-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+        .analyze-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
 
         .spinner {
-            width: 15px; height: 15px; border: 2px solid rgba(255,255,255,0.3);
+            width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.25);
             border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: none;
         }
         .loading .spinner { display: block; }
@@ -169,188 +165,215 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .error-box {
-            background: rgba(247,106,106,0.07); border: 1px solid rgba(247,106,106,0.25);
-            border-radius: 8px; padding: 10px 13px; font-family: var(--mono);
-            font-size: 11px; color: var(--red); display: none; line-height: 1.5; margin-top: 10px;
+            background: rgba(255,95,114,0.06); border: 1px solid rgba(255,95,114,0.2);
+            border-radius: 7px; padding: 9px 12px; font-family: var(--mono);
+            font-size: 10px; color: var(--red); display: none; line-height: 1.6; margin-top: 8px;
         }
         .error-box.visible { display: block; }
 
-        .info-box {
-            background: rgba(124,106,247,0.04);
-            border: 1px solid rgba(124,106,247,0.12);
-            border-radius: 10px; padding: 14px;
-        }
-
-        .info-box-title {
-            font-family: var(--mono); font-size: 10px; color: var(--accent);
-            letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;
+        /* Info panels */
+        .info-panel {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 9px; padding: 12px 14px;
         }
 
         .info-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 7px 0; border-bottom: 1px solid var(--border);
-            font-family: var(--mono); font-size: 11px;
+            padding: 6px 0; border-bottom: 1px solid var(--border);
+            font-family: var(--mono); font-size: 10px;
         }
         .info-row:last-child { border-bottom: none; padding-bottom: 0; }
-        .info-row-label { color: var(--muted); }
+        .info-row-label { color: var(--muted2); }
         .info-row-value { font-weight: 600; color: var(--text); }
         .info-row-value.green  { color: var(--green); }
         .info-row-value.red    { color: var(--red); }
         .info-row-value.accent { color: var(--accent); }
 
-        .right-panel { padding: 28px 32px; overflow-y: auto; }
+        /* Rules panel */
+        .rules-panel {
+            background: rgba(108,92,231,0.04);
+            border: 1px solid rgba(108,92,231,0.12);
+            border-radius: 9px; padding: 12px 14px;
+        }
+
+        .rule-item {
+            display: flex; align-items: flex-start; gap: 8px;
+            padding: 5px 0; border-bottom: 1px solid var(--border);
+            font-family: var(--mono); font-size: 10px; line-height: 1.5;
+        }
+        .rule-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .rule-icon { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+        .rule-text { color: var(--muted2); }
+        .rule-text strong { color: var(--text); font-weight: 500; }
+
+        /* ── Right panel ── */
+        .right-panel { padding: 24px 28px; overflow-y: auto; }
 
         .empty-state {
             height: 100%; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; gap: 10px;
-            color: var(--muted); font-family: var(--mono); font-size: 12px; text-align: center;
+            align-items: center; justify-content: center; gap: 8px;
+            color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: center;
         }
-
         .empty-icon {
-            width: 60px; height: 60px; border: 2px solid var(--border); border-radius: 14px;
+            width: 56px; height: 56px; border: 1px solid var(--border2); border-radius: 12px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 26px; margin-bottom: 6px;
+            font-size: 24px; margin-bottom: 4px; color: var(--muted);
+            background: var(--surface);
         }
+        .empty-hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
+        /* ── Stats ── */
         .stats-row {
             display: grid; grid-template-columns: repeat(3, 1fr);
-            gap: 14px; margin-bottom: 28px;
+            gap: 12px; margin-bottom: 24px;
         }
 
         .stat-card {
             background: var(--card); border: 1px solid var(--border);
-            border-radius: 12px; padding: 20px 22px; position: relative; overflow: hidden;
+            border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden;
         }
-        .stat-card::after {
+        .stat-card::before {
             content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
         }
-        .stat-card.additions::after { background: var(--green); }
-        .stat-card.removals::after  { background: var(--red); }
-        .stat-card.processes::after { background: var(--accent); }
+        .stat-card.additions::before { background: linear-gradient(90deg, var(--green), transparent); }
+        .stat-card.removals::before  { background: linear-gradient(90deg, var(--red), transparent); }
+        .stat-card.processes::before { background: linear-gradient(90deg, var(--accent), transparent); }
 
         .stat-label {
-            font-family: var(--mono); font-size: 10px; color: var(--muted);
-            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px;
+            font-family: var(--mono); font-size: 9px; color: var(--muted2);
+            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px;
         }
-
-        .stat-value { font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -2px; }
+        .stat-value { font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -2px; font-family: var(--mono); }
         .stat-card.additions .stat-value { color: var(--green); }
         .stat-card.removals  .stat-value { color: var(--red); }
         .stat-card.processes .stat-value { color: var(--accent); }
+        .stat-sub { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 5px; }
 
-        .stat-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 6px; }
-
-        .section-title {
-            font-family: var(--mono); font-size: 10px; color: var(--muted);
-            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px;
-            display: flex; align-items: center; gap: 10px;
+        /* ── Section title ── */
+        .sec-title {
+            font-family: var(--mono); font-size: 9px; color: var(--muted2);
+            letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
         }
-        .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+        .sec-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-        .process-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 12px; margin-bottom: 32px;
+        /* ── Process arrow view ── */
+        .process-list {
+            display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px;
         }
 
-        .process-card {
+        .process-row {
             background: var(--card); border: 1px solid var(--border);
-            border-radius: 10px; overflow: hidden; transition: border-color 0.2s, transform 0.15s;
+            border-radius: 9px; padding: 12px 16px;
+            display: flex; align-items: flex-start; gap: 12px;
+            transition: border-color 0.2s, background 0.2s;
+            animation: fadeUp 0.3s ease both;
+            cursor: default;
         }
-        .process-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .process-row:hover { border-color: var(--border2); background: var(--card2); }
 
-        .process-header {
-            padding: 11px 14px; background: var(--surface);
-            display: flex; align-items: center; justify-content: space-between;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .process-name { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 7px; }
-
-        .process-dot {
-            width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
-            flex-shrink: 0; box-shadow: 0 0 5px var(--accent);
+        .process-left {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            flex-shrink: 0; min-width: 90px;
         }
 
-        .process-count {
-            font-family: var(--mono); font-size: 10px;
-            background: rgba(124,106,247,0.1); color: var(--accent);
-            padding: 2px 8px; border-radius: 20px;
+        .process-name-badge {
+            background: rgba(108,92,231,0.12);
+            border: 1px solid rgba(108,92,231,0.25);
+            border-radius: 6px; padding: 5px 10px;
+            font-family: var(--mono); font-size: 11px; font-weight: 600;
+            color: var(--accent); white-space: nowrap;
+            text-align: center; width: 100%;
         }
 
-        .process-files {
-            padding: 9px; display: flex; flex-direction: column; gap: 4px;
-            max-height: 170px; overflow-y: auto;
+        .process-count-badge {
+            font-family: var(--mono); font-size: 9px; color: var(--muted2);
         }
-        .process-files::-webkit-scrollbar { width: 3px; }
-        .process-files::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-        .file-pill {
-            background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
-            padding: 5px 9px; font-family: var(--mono); font-size: 11px; color: var(--text);
-            display: flex; align-items: center; gap: 7px; transition: background 0.15s;
+        .arrow-connector {
+            display: flex; align-items: center; padding-top: 8px; flex-shrink: 0;
+            color: var(--border2); font-size: 18px; font-family: var(--mono);
+            letter-spacing: -2px;
         }
-        .file-pill:hover { background: var(--border); }
 
-        .file-lang { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 700; flex-shrink: 0; }
-        .file-lang.java { background: rgba(247,106,106,0.15); color: #f78a6a; }
-        .file-lang.js   { background: rgba(247,193,40,0.15);  color: var(--yellow); }
+        .process-files-flow {
+            display: flex; flex-wrap: wrap; gap: 5px; padding-top: 4px; flex: 1;
+        }
 
-        .filter-bar { display: flex; gap: 6px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+        .file-chip {
+            display: flex; align-items: center; gap: 5px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 5px; padding: 4px 8px;
+            font-family: var(--mono); font-size: 10px; color: var(--text);
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .file-chip:hover { border-color: var(--border2); background: var(--card2); }
+
+        .lang-dot {
+            width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+        }
+        .lang-dot.java { background: #f78a6a; }
+        .lang-dot.js   { background: var(--yellow); }
+
+        /* ── Changes ── */
+        .filter-bar { display: flex; gap: 5px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
 
         .filter-btn {
             background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
-            padding: 4px 11px; color: var(--muted); font-family: var(--mono); font-size: 10px;
+            padding: 3px 10px; color: var(--muted2); font-family: var(--mono); font-size: 9px;
             letter-spacing: 0.5px; cursor: pointer; transition: all 0.15s;
         }
         .filter-btn:hover { border-color: var(--accent); color: var(--text); }
-        .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(124,106,247,0.08); }
+        .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(108,92,231,0.08); }
 
         .search-input {
             background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
-            padding: 4px 11px; color: var(--text); font-family: var(--mono); font-size: 11px;
-            outline: none; margin-left: auto; width: 170px; transition: border-color 0.2s;
+            padding: 3px 10px; color: var(--text); font-family: var(--mono); font-size: 10px;
+            outline: none; margin-left: auto; width: 160px; transition: border-color 0.2s;
         }
         .search-input:focus { border-color: var(--accent); }
         .search-input::placeholder { color: var(--muted); }
 
-        .changes-list { display: flex; flex-direction: column; gap: 4px; }
+        .changes-list { display: flex; flex-direction: column; gap: 3px; }
 
         .change-item {
-            background: var(--card); border: 1px solid var(--border); border-radius: 7px;
-            padding: 8px 13px; display: grid;
-            grid-template-columns: 32px 58px 1fr auto;
-            align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px;
-            transition: background 0.15s; animation: slideIn 0.22s ease both;
+            background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+            padding: 7px 12px; display: grid;
+            grid-template-columns: 28px 52px 1fr auto;
+            align-items: center; gap: 9px;
+            font-family: var(--mono); font-size: 10px;
+            transition: background 0.15s; animation: slideIn 0.2s ease both;
         }
         .change-item:hover { background: var(--surface); }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-5px); }
+            from { opacity: 0; transform: translateX(-4px); }
             to   { opacity: 1; transform: translateX(0); }
         }
 
         .change-badge {
             font-size: 10px; font-weight: 700; padding: 2px 5px;
-            border-radius: 4px; text-align: center;
+            border-radius: 3px; text-align: center; font-family: var(--mono);
         }
-        .change-badge.addition { background: rgba(74,240,160,0.1); color: var(--green); }
-        .change-badge.removal  { background: rgba(247,106,106,0.1); color: var(--red); }
+        .change-badge.addition { background: rgba(0,229,160,0.08); color: var(--green); border: 1px solid rgba(0,229,160,0.15); }
+        .change-badge.removal  { background: rgba(255,95,114,0.08); color: var(--red); border: 1px solid rgba(255,95,114,0.15); }
 
-        .change-type { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+        .change-type { color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: 1px; }
         .change-param { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .change-file { color: var(--muted); font-size: 10px; text-align: right; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .change-file { color: var(--muted); font-size: 9px; text-align: right; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        .empty { text-align: center; padding: 36px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+        .empty { text-align: center; padding: 32px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 
         #results { display: none; }
-        #results.visible { display: block; animation: fadeUp 0.32s ease; }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        #results.visible { display: block; animation: fadeUp 0.3s ease; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-        @media (max-width: 900px) {
+        @media (max-width: 860px) {
             .layout { grid-template-columns: 1fr; }
             .left-panel { border-right: none; border-bottom: 1px solid var(--border); }
-            header { padding: 14px 20px; }
+            header { padding: 12px 16px; }
             .stats-row { grid-template-columns: 1fr 1fr; }
+            .right-panel { padding: 16px; }
         }
     </style>
 </head>
@@ -361,85 +384,126 @@
 <header>
     <div class="logo-mark">R</div>
     <div class="logo-text">Rippler AST</div>
+    <span class="logo-divider">·</span>
+    <span class="logo-sub-text">change impact analyzer</span>
     <div class="header-right">
         <div class="status-pill">
             <div class="status-dot" id="statusDot"></div>
             <span id="statusLabel">idle</span>
         </div>
-        <div class="logo-sub">v1.0 · prototype</div>
+        <span class="version-tag">v1.0</span>
     </div>
 </header>
 
 <div class="layout">
     <!-- Left panel -->
     <div class="left-panel">
+
+        <!-- Input -->
         <div>
-            <div class="panel-label">// repository</div>
+            <div class="section-head">repository</div>
             <div class="field">
-                <label>Repository URL</label>
+                <label>URL</label>
                 <input id="repoUrl" type="text" placeholder="https://github.com/user/repo.git"/>
             </div>
             <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">
                 <div class="spinner"></div>
-                <span class="btn-text">▶ &nbsp;Run Analysis</span>
+                <span class="btn-text">▶  Run Analysis</span>
             </button>
             <div class="error-box" id="errorBox"></div>
         </div>
 
-        <div class="info-box" id="summaryBox" style="display:none;">
-            <div class="info-box-title">// last run</div>
-            <div class="info-row">
-                <span class="info-row-label">Additions</span>
-                <span class="info-row-value green" id="infoAdditions">—</span>
-            </div>
-            <div class="info-row">
-                <span class="info-row-label">Removals</span>
-                <span class="info-row-value red" id="infoRemovals">—</span>
-            </div>
-            <div class="info-row">
-                <span class="info-row-label">Affected Processes</span>
-                <span class="info-row-value accent" id="infoProcesses">—</span>
-            </div>
-            <div class="info-row">
-                <span class="info-row-label">Total Changes</span>
-                <span class="info-row-value" id="infoTotal">—</span>
+        <!-- Last run summary -->
+        <div id="summaryBox" style="display:none;">
+            <div class="section-head">last run</div>
+            <div class="info-panel">
+                <div class="info-row">
+                    <span class="info-row-label">Additions</span>
+                    <span class="info-row-value green" id="infoAdditions">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-row-label">Removals</span>
+                    <span class="info-row-value red" id="infoRemovals">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-row-label">Processes Hit</span>
+                    <span class="info-row-value accent" id="infoProcesses">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-row-label">Total Changes</span>
+                    <span class="info-row-value" id="infoTotal">—</span>
+                </div>
             </div>
         </div>
 
-        <div class="info-box">
-            <div class="info-box-title">// pipeline</div>
-            <div class="info-row">
-                <span class="info-row-label">① Clone &amp; Snapshot</span>
-                <span class="info-row-value" style="color:var(--muted);font-size:10px;">last 2 commits</span>
-            </div>
-            <div class="info-row">
-                <span class="info-row-label">② Parse AST</span>
-                <span class="info-row-value" style="color:var(--muted);font-size:10px;">Java &amp; JS</span>
-            </div>
-            <div class="info-row">
-                <span class="info-row-label">③ Build Graph</span>
-                <span class="info-row-value" style="color:var(--muted);font-size:10px;">Neo4j</span>
-            </div>
-            <div class="info-row">
-                <span class="info-row-label">④ Trace Impact</span>
-                <span class="info-row-value" style="color:var(--muted);font-size:10px;">reverse DFS</span>
-            </div>
-            <div class="info-row">
-                <span class="info-row-label">⑤ Map Processes</span>
-                <span class="info-row-value" style="color:var(--muted);font-size:10px;">folder-level</span>
+        <!-- Pipeline -->
+        <div>
+            <div class="section-head">pipeline</div>
+            <div class="info-panel">
+                <div class="info-row">
+                    <span class="info-row-label">① Clone &amp; Diff</span>
+                    <span class="info-row-value" style="color:var(--muted2)">last 2 commits</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-row-label">② Parse AST</span>
+                    <span class="info-row-value" style="color:var(--muted2)">Java &amp; JS</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-row-label">③ Build Graph</span>
+                    <span class="info-row-value" style="color:var(--muted2)">Neo4j</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-row-label">④ Trace Impact</span>
+                    <span class="info-row-value" style="color:var(--muted2)">reverse DFS</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-row-label">⑤ Map Processes</span>
+                    <span class="info-row-value" style="color:var(--muted2)">folder-level</span>
+                </div>
             </div>
         </div>
+
+        <!-- Rules -->
+        <div>
+            <div class="section-head">requirements</div>
+            <div class="rules-panel">
+                <div class="rule-item">
+                    <span class="rule-icon">›</span>
+                    <span class="rule-text"><strong>2+ commits</strong> — repo must have at least 2 commits to diff</span>
+                </div>
+                <div class="rule-item">
+                    <span class="rule-icon">›</span>
+                    <span class="rule-text"><strong>Public repo</strong> — must be accessible via HTTPS clone</span>
+                </div>
+                <div class="rule-item">
+                    <span class="rule-icon">›</span>
+                    <span class="rule-text"><strong>.java or .js files</strong> — only these are parsed by the AST engine</span>
+                </div>
+                <div class="rule-item">
+                    <span class="rule-icon">›</span>
+                    <span class="rule-text"><strong>Folder = process</strong> — each directory is treated as one process unit</span>
+                </div>
+                <div class="rule-item">
+                    <span class="rule-icon">›</span>
+                    <span class="rule-text"><strong>.git URL format</strong> — must end in <code style="color:var(--accent)">.git</code></span>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Right panel -->
     <div class="right-panel">
+
         <div class="empty-state" id="emptyState">
             <div class="empty-icon">⬡</div>
             <div>No analysis run yet</div>
-            <div style="font-size:11px;margin-top:4px;">Enter a repo URL and hit Run Analysis</div>
+            <div class="empty-hint">Enter a repo URL and hit Run Analysis</div>
         </div>
 
         <div id="results">
+
+            <!-- Stats -->
             <div class="stats-row">
                 <div class="stat-card additions">
                     <div class="stat-label">Additions</div>
@@ -458,10 +522,12 @@
                 </div>
             </div>
 
-            <div class="section-title">Affected Processes</div>
-            <div class="process-grid" id="processGrid"></div>
+            <!-- Affected Processes — arrow view -->
+            <div class="sec-title">affected processes</div>
+            <div class="process-list" id="processList"></div>
 
-            <div class="section-title">Raw Changes</div>
+            <!-- Raw Changes -->
+            <div class="sec-title">raw changes</div>
             <div class="filter-bar">
                 <button class="filter-btn active" onclick="filterChanges('all', this)">All</button>
                 <button class="filter-btn" onclick="filterChanges('ADDITION', this)">+ Add</button>
@@ -472,6 +538,7 @@
                 <input class="search-input" id="searchInput" placeholder="Search..." oninput="applyFilters()"/>
             </div>
             <div class="changes-list" id="changesList"></div>
+
         </div>
     </div>
 </div>
@@ -484,6 +551,7 @@
         const btn = document.getElementById('analyzeBtn');
         const err = document.getElementById('errorBox');
         if (!url) { showError('Please enter a repository URL.'); return; }
+        if (!url.endsWith('.git')) { showError('URL must end in .git — e.g. https://github.com/user/repo.git'); return; }
         btn.classList.add('loading'); btn.disabled = true;
         err.classList.remove('visible');
         setStatus('running', 'analyzing...');
@@ -497,8 +565,8 @@
             renderResults(await res.json());
             setStatus('online', 'complete');
         } catch(e) {
-            showError(e.message || 'Analysis failed.');
-            setStatus('', 'error');
+            showError(e.message || 'Analysis failed. Check server logs.');
+            setStatus('error', 'error');
         } finally {
             btn.classList.remove('loading'); btn.disabled = false;
         }
@@ -518,66 +586,90 @@
     function renderResults(data) {
         allChanges = data.rawChanges || [];
         const pm = data.affectedProcessMap || {};
-        const add = allChanges.filter(c => c.changeType === 'ADDITION').length;
-        const rem = allChanges.filter(c => c.changeType === 'REMOVAL').length;
+        const add  = allChanges.filter(c => c.changeType === 'ADDITION').length;
+        const rem  = allChanges.filter(c => c.changeType === 'REMOVAL').length;
         const proc = Object.keys(pm).length;
+
         animateCounter('statAdditions', add);
         animateCounter('statRemovals', rem);
         animateCounter('statProcesses', proc);
+
         document.getElementById('infoAdditions').textContent = add;
         document.getElementById('infoRemovals').textContent  = rem;
         document.getElementById('infoProcesses').textContent = proc;
         document.getElementById('infoTotal').textContent     = allChanges.length;
         document.getElementById('summaryBox').style.display  = 'block';
-        renderProcessMap(pm);
+
+        renderProcessList(pm);
         renderChanges(allChanges);
+
         document.getElementById('emptyState').style.display = 'none';
         document.getElementById('results').classList.add('visible');
     }
 
     function animateCounter(id, target) {
         const el = document.getElementById(id); let val = 0;
-        const step = Math.max(1, Math.ceil(target / 24));
-        const iv = setInterval(() => { val = Math.min(val + step, target); el.textContent = val; if (val >= target) clearInterval(iv); }, 28);
+        const step = Math.max(1, Math.ceil(target / 20));
+        const iv = setInterval(() => {
+            val = Math.min(val + step, target); el.textContent = val;
+            if (val >= target) clearInterval(iv);
+        }, 30);
     }
 
-    function renderProcessMap(pm) {
-        const grid = document.getElementById('processGrid'); grid.innerHTML = '';
+    function renderProcessList(pm) {
+        const list = document.getElementById('processList');
+        list.innerHTML = '';
         const entries = Object.entries(pm);
-        if (!entries.length) { grid.innerHTML = '<div class="empty">No affected processes detected</div>'; return; }
+        if (!entries.length) {
+            list.innerHTML = '<div class="empty">No affected processes detected</div>';
+            return;
+        }
         entries.forEach(([proc, files], i) => {
-            const card = document.createElement('div');
-            card.className = 'process-card';
-            card.style.cssText = `animation: fadeUp 0.32s ease ${i*50}ms both`;
-            card.innerHTML = `
-        <div class="process-header">
-          <div class="process-name"><div class="process-dot"></div>${escHtml(proc)}</div>
-          <div class="process-count">${files.length} file${files.length!==1?'s':''}</div>
+            const row = document.createElement('div');
+            row.className = 'process-row';
+            row.style.animationDelay = `${i * 40}ms`;
+
+            const filesHtml = files.map(f => {
+                const name = f.filename || 'unknown';
+                const lang = (f.language || '').toLowerCase();
+                return `<div class="file-chip">
+          <span class="lang-dot ${lang}"></span>
+          ${escHtml(name)}
+        </div>`;
+            }).join('');
+
+            row.innerHTML = `
+        <div class="process-left">
+          <div class="process-name-badge">${escHtml(proc)}</div>
+          <div class="process-count-badge">${files.length} file${files.length !== 1 ? 's' : ''}</div>
         </div>
-        <div class="process-files">${files.map(f => {
-                const name = f.filename||'unknown', lang=(f.language||'').toLowerCase();
-                return `<div class="file-pill"><span class="file-lang ${lang}">${lang.toUpperCase()}</span>${escHtml(name)}</div>`;
-            }).join('')}</div>`;
-            grid.appendChild(card);
+        <div class="arrow-connector">→</div>
+        <div class="process-files-flow">${filesHtml}</div>
+      `;
+            list.appendChild(row);
         });
     }
 
     function renderChanges(changes) {
-        const list = document.getElementById('changesList'); list.innerHTML = '';
+        const list = document.getElementById('changesList');
+        list.innerHTML = '';
         if (!changes.length) { list.innerHTML = '<div class="empty">No changes detected</div>'; return; }
         changes.forEach((c, i) => {
-            const param = c.changeType==='ADDITION' ? c.newParameter : c.oldParameter;
+            const param = c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter;
             const cat   = guessCategory(param);
-            const fname = c.affectedCu ? (c.affectedCu.filename||'') : '';
+            const fname = c.affectedCu ? (c.affectedCu.filename || '') : '';
             const item  = document.createElement('div');
             item.className = 'change-item';
-            item.dataset.type = c.changeType; item.dataset.category = cat; item.dataset.param = param.toLowerCase();
-            item.style.animationDelay = `${Math.min(i*14,320)}ms`;
+            item.dataset.type = c.changeType;
+            item.dataset.category = cat;
+            item.dataset.param = param.toLowerCase();
+            item.style.animationDelay = `${Math.min(i * 12, 300)}ms`;
             item.innerHTML = `
-        <span class="change-badge ${c.changeType==='ADDITION'?'addition':'removal'}">${c.changeType==='ADDITION'?'+':'−'}</span>
+        <span class="change-badge ${c.changeType === 'ADDITION' ? 'addition' : 'removal'}">${c.changeType === 'ADDITION' ? '+' : '−'}</span>
         <span class="change-type">${cat}</span>
         <span class="change-param">${escHtml(param)}</span>
-        ${fname?`<span class="change-file">${escHtml(fname)}</span>`:''}`;
+        ${fname ? `<span class="change-file">${escHtml(fname)}</span>` : ''}
+      `;
             list.appendChild(item);
         });
     }
@@ -598,9 +690,9 @@
     function applyFilters() {
         const search = document.getElementById('searchInput').value.toLowerCase();
         document.querySelectorAll('.change-item').forEach(item => {
-            const mt = currentFilter==='all'||item.dataset.type===currentFilter||item.dataset.category===currentFilter;
-            const ms = !search||item.dataset.param.includes(search);
-            item.style.display = mt&&ms ? 'grid' : 'none';
+            const mt = currentFilter === 'all' || item.dataset.type === currentFilter || item.dataset.category === currentFilter;
+            const ms = !search || item.dataset.param.includes(search);
+            item.style.display = mt && ms ? 'grid' : 'none';
         });
     }
 
@@ -608,7 +700,9 @@
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    document.addEventListener('keydown', e => { if (e.key==='Enter'&&document.activeElement.tagName==='INPUT') runAnalysis(); });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') runAnalysis();
+    });
 </script>
 </body>
 </html>
