@@ -16,15 +16,19 @@ import org.app.cia.process.ProcessMapper;
 import org.app.cia.registry.RegistryService;
 import org.app.cia.registry.RepoRegistry;
 import org.jgrapht.Graph;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
 @Service
 public class CoreService {
 
+    @Value("${app.basepath}")
+    private String basePath;
     private final CodeUnitNodeRepository repository;
     private final RegistryService registryService = new RegistryService();
     private final DirScanner dirScanner = new DirScanner();
@@ -43,8 +47,8 @@ public class CoreService {
         this.repository = repository;
     }
 
-    public void extractAndBuild(String url, Path base) {
-        RepoRegistry registry = registryService.getOrRegister(url, base);
+    public void extractAndBuild(String url) {
+        RepoRegistry registry = registryService.getOrRegister(url, Paths.get(basePath));
 
         Map<Language, List<Path>> currentFileMap = dirScanner.traverseChanged(registry.getCurrentSnapshot(), registry.getChangedFiles());
         Map<Language, List<Path>> oldFileMap = dirScanner.traverseChanged(registry.getPreviousSnapshot(), registry.getChangedFiles());

@@ -15,8 +15,7 @@ import java.nio.file.Paths;
 
 public class JsASTParser {
 
-    private static final String PARSER_PATH = "D:\\Data\\SY\\CIA\\src\\main\\java\\org\\app\\cia\\parser\\JSParser\\parser.js";
-
+    private static final String PARSER_PATH = "/app/parser.js";
     public CodeUnit parse(Path filePath){
         JsonNode node=fetchAndParseJSON(filePath);
         return convert(node);
