@@ -15,7 +15,7 @@ import java.nio.file.Paths;
 
 public class JsASTParser {
 
-    private static final String PARSER_PATH = "D:\\Data\\SY\\CIA\\src\\main\\java\\org\\app\\cia\\processing\\JSParser\\parser.js";
+    private static final String PARSER_PATH = "D:\\Data\\SY\\CIA\\src\\main\\java\\org\\app\\cia\\parser\\JSParser\\parser.js";
 
     public CodeUnit parse(Path filePath){
         JsonNode node=fetchAndParseJSON(filePath);
@@ -24,7 +24,7 @@ public class JsASTParser {
 
     public JsonNode fetchAndParseJSON(Path filePath){
         ProcessBuilder pb=new ProcessBuilder("node",PARSER_PATH,filePath.toString());
-        pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
         Process fetchProcess;
         try {
            fetchProcess=pb.start();

@@ -27,9 +27,11 @@ public class ImpactAnalysisEngine {
         EdgeReversedGraph<CodeUnit, Edge> reversed = new EdgeReversedGraph<>(graph);
 
         for(Change c:changeList){
-            DepthFirstIterator<CodeUnit,Edge> depthFirstIterator=new DepthFirstIterator<>(reversed,c.getAffectedCu());
-            while(depthFirstIterator.hasNext()){
-                affectedUnits.add(depthFirstIterator.next());
+            if(graph.containsVertex(c.getAffectedCu())){
+                DepthFirstIterator<CodeUnit,Edge> dfi = new DepthFirstIterator<>(reversed, c.getAffectedCu());
+                while(dfi.hasNext()){
+                    affectedUnits.add(dfi.next());
+                }
             }
         }
         Map<String, List<CodeUnit>> affectedMap=mapper.mapProcesses(affectedUnits.stream().toList());

@@ -1,5 +1,6 @@
 package org.app.cia.parser;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.Setter;
 import org.app.cia.parser.Enums.Language;
@@ -12,6 +13,7 @@ import java.util.List;
 public class CodeUnit {
     private final List<String> interfaces;   //File Specific Model
     private final String filename;
+    @JsonIgnore
     private final Path filePath;
     private final Language language;
 
