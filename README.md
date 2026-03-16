@@ -1,4 +1,12 @@
 # Rippler AST — Process-Oriented Change Impact Analyzer
+![Java](https://img.shields.io/badge/Java-21-ED8B00?style=flat&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0-6DB33F?style=flat&logo=springboot&logoColor=white)
+![Neo4j](https://img.shields.io/badge/Neo4j-AuraDB-008CC1?style=flat&logo=neo4j&logoColor=white)
+![JGraphT](https://img.shields.io/badge/JGraphT-1.5.2-purple?style=flat)
+![Node.js](https://img.shields.io/badge/Node.js-20-339933?style=flat&logo=nodedotjs&logoColor=white)
+![Railway](https://img.shields.io/badge/Deployed-Railway-0B0D0E?style=flat&logo=railway&logoColor=white)
+![Netlify](https://img.shields.io/badge/Frontend-Netlify-00C7B7?style=flat&logo=netlify&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=flat)
 
 > **Live Demo → [ripplerast.netlify.app](https://ripplerast.netlify.app/)**
 
