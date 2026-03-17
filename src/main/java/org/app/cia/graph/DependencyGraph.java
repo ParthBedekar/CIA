@@ -19,6 +19,7 @@ public class DependencyGraph {
 
         Map<String,CodeUnit> importMap=new HashMap<>();
 
+
         for(CodeUnit cu:codeUnits){
             cu.getClasses().forEach(cl->classMap.put(cl,cu));
             cu.getMethods().forEach(method->methodMap.put(method,cu));
@@ -34,10 +35,13 @@ public class DependencyGraph {
                     result.addEdge(cu,methodMap.get(methodCall),edge);
                 }
             }
-            for(String imp:cu.getImports()){
-                if(importMap.containsKey(imp) && !importMap.get(imp).equals(cu)){
-                    Edge edge=new Edge(cu,importMap.get(imp),EdgeLabel.IMPORT);
-                    result.addEdge(cu,importMap.get(imp),edge);
+            for(String imp : cu.getImports()){
+                // Extract simple class name from fully qualified import
+                String simpleName = imp.contains(".") ?
+                        imp.substring(imp.lastIndexOf(".") + 1) : imp;
+                if(classMap.containsKey(simpleName) && !classMap.get(simpleName).equals(cu)){
+                    Edge edge = new Edge(cu, classMap.get(simpleName), EdgeLabel.IMPORT);
+                    result.addEdge(cu, classMap.get(simpleName), edge);
                 }
             }
             for(CodeUnit.ParentData pd:cu.getInheritance()){
