@@ -91,13 +91,20 @@ public class CoreService {
         // Current graph — only changed files
         codeUnitGraph = dependencyGraph.buildGraph(currentUnits);
 
-        // Old graph — full previous snapshot for complete dependency traversal
+        // Old graph — full repo at previous commit for complete dependency traversal
         RepoRegistry registry = registryService.getLastRegistry();
-        Map<Language, List<Path>> fullOldFileMap = dirScanner.traverse(
-                List.of(registry.getPreviousSnapshot())
-        );
-        List<CodeUnit> fullOldUnits = fileDispatcher.dispatch(fullOldFileMap);
+        GitManager gm = new GitManager(registry.getClonedPath().getFileName().toString(), Paths.get(basePath));
+
+        // Checkout old hash
+        gm.checkoutHash(registry.getClonedPath(), registry.getPreviousHash());
+
+        // Parse full repo at old state
+        Map<Language, List<Path>> fullOldMap = dirScanner.traverse(List.of(registry.getClonedPath()));
+        List<CodeUnit> fullOldUnits = fileDispatcher.dispatch(fullOldMap);
         oldCodeUnitGraph = dependencyGraph.buildGraph(fullOldUnits);
+
+        // Checkout back to current hash
+        gm.checkoutHash(registry.getClonedPath(), registry.getCurrentHash());
     }
 
     public void computeDiff() {

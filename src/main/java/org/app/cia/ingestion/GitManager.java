@@ -1,5 +1,6 @@
 package org.app.cia.ingestion;
 
+import org.apache.commons.io.FileUtils;
 import org.app.cia.ingestion.Exceptions.GitOperationException;
 
 import java.io.BufferedReader;
@@ -14,11 +15,39 @@ public class GitManager {
     private final String repoUrl;
     private final Path baseDirectory;
 
-    public GitManager(String url,Path base){
-        this.repoUrl=url;
-        this.baseDirectory=base;
+    public GitManager(String url, Path base) {
+        this.repoUrl = url;
+        this.baseDirectory = base;
     }
-    public void pullRepo(Path clonedPath){
+
+    public void checkoutHash(Path clonedPath, String hash) {
+        ProcessBuilder checkout = new ProcessBuilder("git", "checkout", hash);
+        checkout.directory(clonedPath.toFile());
+        checkout.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        checkout.redirectError(ProcessBuilder.Redirect.DISCARD);
+        try {
+            checkout.start().waitFor();
+        } catch (Exception e) {
+            throw new GitOperationException("Failed to checkout hash: " + hash);
+        }
+    }
+
+    public void pullRepo(Path clonedPath) {
+        ProcessBuilder resetMain = new ProcessBuilder("git", "checkout", "main");
+        resetMain.directory(clonedPath.toFile());
+        resetMain.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        resetMain.redirectError(ProcessBuilder.Redirect.DISCARD);
+        try {
+            int exitCode = resetMain.start().waitFor();
+            if (exitCode != 0) {
+                ProcessBuilder resetMaster = new ProcessBuilder("git", "checkout", "master");
+                resetMaster.directory(clonedPath.toFile());
+                resetMaster.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+                resetMaster.redirectError(ProcessBuilder.Redirect.DISCARD);
+                resetMaster.start().waitFor();
+            }
+        } catch (Exception e) { /* ignore */ }
+
         ProcessBuilder puller = new ProcessBuilder("git", "pull");
         puller.directory(clonedPath.toFile());
         puller.redirectOutput(ProcessBuilder.Redirect.DISCARD);
@@ -35,11 +64,12 @@ public class GitManager {
         } catch (InterruptedException e) {
             throw new GitOperationException("Pull process interrupted for: " + repoUrl);
         }
-        if(exitCode != 0){
+        if (exitCode != 0) {
             throw new GitOperationException("Failed to pull repository: " + repoUrl);
         }
     }
-    public List<String> getChangedFiles(Path clonedPath, String hash1, String hash2){
+
+    public List<String> getChangedFiles(Path clonedPath, String hash1, String hash2) {
         ProcessBuilder pb = new ProcessBuilder("git", "diff", "--name-only", hash1, hash2);
         pb.directory(clonedPath.toFile());
         Process process;
@@ -51,10 +81,10 @@ public class GitManager {
         BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
         List<String> changedFiles = new ArrayList<>();
         String line;
-        while(true){
+        while (true) {
             try {
                 line = reader.readLine();
-                if(line == null) break;
+                if (line == null) break;
                 changedFiles.add(line);
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -68,12 +98,11 @@ public class GitManager {
         return changedFiles;
     }
 
-    public Path cloneRepo(){
-
+    public Path cloneRepo() {
         int idx = repoUrl.lastIndexOf("/");
         String folderName = repoUrl.substring(idx + 1, repoUrl.lastIndexOf(".git"));
         Path cloneDest = Paths.get(baseDirectory.toString(), folderName);
-        if(cloneDest.toFile().exists()){
+        if (cloneDest.toFile().exists()) {
             return cloneDest;
         }
         ProcessBuilder cloner = new ProcessBuilder("git", "clone", repoUrl, cloneDest.toString());
@@ -81,35 +110,30 @@ public class GitManager {
         cloner.redirectError(ProcessBuilder.Redirect.DISCARD);
         Process clonerProcess;
         try {
-            clonerProcess=cloner.start();
+            clonerProcess = cloner.start();
         } catch (IOException e) {
             throw new GitOperationException("Failed to Clone Repository: " + repoUrl);
         }
         int exitCode;
-
         try {
-            exitCode=clonerProcess.waitFor();
+            exitCode = clonerProcess.waitFor();
         } catch (InterruptedException e) {
-            throw new GitOperationException("Cloning Process for "+repoUrl +" Interrupted");
+            throw new GitOperationException("Cloning Process for " + repoUrl + " Interrupted");
         }
-        if(exitCode!=0){
-            throw new GitOperationException("Failed to clone repository: repoUrl exited with code "+exitCode);
+        if (exitCode != 0) {
+            throw new GitOperationException("Failed to clone repository: repoUrl exited with code " + exitCode);
         }
-
-
         return cloneDest;
-
     }
 
-    public List<String> getCommitHashes(Path repoDirectory){
-        // Try main first, then master
+    public List<String> getCommitHashes(Path repoDirectory) {
         ProcessBuilder resetMain = new ProcessBuilder("git", "checkout", "master");
         resetMain.directory(repoDirectory.toFile());
         resetMain.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         resetMain.redirectError(ProcessBuilder.Redirect.DISCARD);
         try {
             int exitCode = resetMain.start().waitFor();
-            if(exitCode != 0){
+            if (exitCode != 0) {
                 ProcessBuilder resetMaster = new ProcessBuilder("git", "checkout", "main");
                 resetMaster.directory(repoDirectory.toFile());
                 resetMaster.redirectOutput(ProcessBuilder.Redirect.DISCARD);
@@ -118,7 +142,7 @@ public class GitManager {
             }
         } catch (Exception e) { /* ignore */ }
 
-        ProcessBuilder cd = new ProcessBuilder("git","log","--format=%H","-n","2");
+        ProcessBuilder cd = new ProcessBuilder("git", "log", "--format=%H", "-n", "2");
         cd.directory(repoDirectory.toFile());
         Process hashProcess;
         try {
@@ -130,10 +154,10 @@ public class GitManager {
         BufferedReader reader = new BufferedReader(new InputStreamReader(hashProcess.getInputStream()));
         String line;
         List<String> commitHashes = new ArrayList<>();
-        while(true){
+        while (true) {
             try {
                 line = reader.readLine();
-                if(line == null) break;
+                if (line == null) break;
                 commitHashes.add(line);
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -146,21 +170,20 @@ public class GitManager {
         } catch (InterruptedException e) {
             throw new GitOperationException("Failed to obtain Commit Hashes For: " + repoUrl);
         }
-        if(exitCode != 0){
+        if (exitCode != 0) {
             throw new GitOperationException("Failed to obtain Commit Hashes For: " + repoUrl);
         }
-
         return commitHashes;
     }
 
-    public List<Path> createSnapshots(List<String> commitHashes, Path clonedPath, List<String> changedFiles){
+    public List<Path> createSnapshots(List<String> commitHashes, Path clonedPath, List<String> changedFiles) {
         List<Path> result = new ArrayList<>();
-        for(String hash : commitHashes){
+        for (String hash : commitHashes) {
             Path dest = Paths.get(baseDirectory.toString(), ("snapshot-" + hash));
             result.add(dest);
-            if(dest.toFile().exists()) continue;
+            if (dest.toFile().exists()) continue;
             dest.toFile().mkdirs();
-            for(String file : changedFiles){
+            for (String file : changedFiles) {
                 ProcessBuilder pb = new ProcessBuilder("git", "show", hash + ":" + file);
                 pb.directory(clonedPath.toFile());
                 Process process;
