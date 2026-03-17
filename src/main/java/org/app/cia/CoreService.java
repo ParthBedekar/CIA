@@ -12,7 +12,6 @@ import org.app.cia.parser.CodeUnit;
 import org.app.cia.parser.DirScanner;
 import org.app.cia.parser.Enums.Language;
 import org.app.cia.parser.FileDispatcher;
-import org.app.cia.process.ProcessMapper;
 import org.app.cia.registry.RegistryService;
 import org.app.cia.registry.RepoRegistry;
 import org.jgrapht.Graph;
@@ -41,6 +40,8 @@ public class CoreService {
     private List<CodeUnit> currentUnits;
     private Graph<CodeUnit, Edge> codeUnitGraph;
     private List<Change> changes;
+
+
     private ImpactReport impactReport;
 
     public CoreService(CodeUnitNodeRepository repository) {
@@ -56,19 +57,22 @@ public class CoreService {
         currentUnits = fileDispatcher.dispatch(currentFileMap);
         oldUnits = fileDispatcher.dispatch(oldFileMap);
     }
+    private Graph<CodeUnit, Edge> oldCodeUnitGraph;
+
     public void buildGraph() {
         codeUnitGraph = dependencyGraph.buildGraph(currentUnits);
+        oldCodeUnitGraph = dependencyGraph.buildGraph(oldUnits);
     }
 
+    public void analyzeImpact() {
+        ImpactAnalysisEngine engine = new ImpactAnalysisEngine();
+        impactReport = engine.analyze(changes, codeUnitGraph, oldCodeUnitGraph, currentUnits);
+    }
     public void computeDiff() {
         changes = astDiffEngine.diff(oldUnits, currentUnits);
     }
 
-    public void analyzeImpact() {
-        ProcessMapper processMapper = new ProcessMapper();
-        ImpactAnalysisEngine engine = new ImpactAnalysisEngine();
-        impactReport = engine.analyze(changes, codeUnitGraph);
-    }
+
 
     public void persistGraph() {
         repository.saveAll(graphMapper.map(codeUnitGraph));

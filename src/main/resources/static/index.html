@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Rippler AST — Change Impact Analyzer</title>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
     <style>
         :root {
             --bg:      #0b0b10;
@@ -39,84 +40,63 @@
 
         body::before {
             content: '';
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background-image:
                     linear-gradient(rgba(108,92,231,0.018) 1px, transparent 1px),
                     linear-gradient(90deg, rgba(108,92,231,0.018) 1px, transparent 1px);
             background-size: 32px 32px;
-            pointer-events: none;
-            z-index: 0;
+            pointer-events: none; z-index: 0;
         }
 
-        .blob {
-            position: fixed; border-radius: 50%;
-            filter: blur(160px); pointer-events: none; z-index: 0;
-        }
+        .blob { position: fixed; border-radius: 50%; filter: blur(160px); pointer-events: none; z-index: 0; }
         .blob-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; opacity: 0.07; }
         .blob-2 { width: 400px; height: 400px; background: var(--accent2); bottom: -100px; right: -50px; opacity: 0.06; }
 
         /* ── Header ── */
         header {
             position: sticky; top: 0; z-index: 100;
-            padding: 14px 32px;
-            border-bottom: 1px solid var(--border);
+            padding: 14px 32px; border-bottom: 1px solid var(--border);
             display: flex; align-items: center; gap: 12px;
-            background: rgba(11,11,16,0.92);
-            backdrop-filter: blur(16px);
+            background: rgba(11,11,16,0.92); backdrop-filter: blur(16px);
         }
 
         .logo-mark {
             width: 30px; height: 30px;
             background: linear-gradient(135deg, var(--accent), var(--accent2));
-            border-radius: 7px;
-            display: flex; align-items: center; justify-content: center;
-            font-family: var(--mono); font-weight: 600; font-size: 12px; color: #fff;
-            flex-shrink: 0;
+            border-radius: 7px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 600; font-size: 12px; color: #fff; flex-shrink: 0;
         }
 
         .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
         .logo-divider { color: var(--border2); margin: 0 4px; }
         .logo-sub-text { font-family: var(--mono); font-size: 10px; color: var(--muted2); letter-spacing: 0.5px; }
-
         .header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 
         .status-pill {
             display: flex; align-items: center; gap: 6px;
             font-family: var(--mono); font-size: 10px; color: var(--muted2);
-            padding: 4px 10px; border: 1px solid var(--border); border-radius: 20px;
-            background: var(--surface);
+            padding: 4px 10px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface);
         }
 
-        .status-dot {
-            width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
-            transition: background 0.3s, box-shadow 0.3s;
-        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background 0.3s, box-shadow 0.3s; }
         .status-dot.online  { background: var(--green); box-shadow: 0 0 8px var(--green); }
         .status-dot.running { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); animation: pulse 1s infinite; }
         .status-dot.error   { background: var(--red); box-shadow: 0 0 8px var(--red); }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-        .version-tag {
-            font-family: var(--mono); font-size: 10px; color: var(--muted);
-            letter-spacing: 1px; text-transform: uppercase;
-        }
+        .version-tag { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
 
         /* ── Layout ── */
         .layout {
             position: relative; z-index: 10;
-            display: grid;
-            grid-template-columns: 300px 1fr;
+            display: grid; grid-template-columns: 300px 1fr;
             min-height: calc(100vh - 59px);
         }
 
-        /* ── Left panel ── */
         .left-panel {
-            border-right: 1px solid var(--border);
-            padding: 20px 18px;
+            border-right: 1px solid var(--border); padding: 20px 18px;
             display: flex; flex-direction: column; gap: 16px;
-            background: rgba(15,15,22,0.6);
-            overflow-y: auto;
+            background: rgba(15,15,22,0.6); overflow-y: auto;
         }
 
         .section-head {
@@ -127,21 +107,14 @@
         .section-head::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
         .field { margin-bottom: 10px; }
-        .field label {
-            display: block; font-size: 10px; font-family: var(--mono);
-            color: var(--muted2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px;
-        }
+        .field label { display: block; font-size: 10px; font-family: var(--mono); color: var(--muted2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px; }
 
         .field input {
             width: 100%; background: var(--surface); border: 1px solid var(--border);
             border-radius: 7px; padding: 9px 12px; color: var(--text);
-            font-family: var(--mono); font-size: 11px; outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
+            font-family: var(--mono); font-size: 11px; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .field input:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(108,92,231,0.1);
-        }
+        .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,92,231,0.1); }
         .field input::placeholder { color: var(--muted); }
 
         .analyze-btn {
@@ -156,32 +129,17 @@
         .analyze-btn:active { transform: translateY(0); }
         .analyze-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
 
-        .spinner {
-            width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.25);
-            border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: none;
-        }
+        .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.25); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
         .loading .spinner { display: block; }
         .loading .btn-text { display: none; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .error-box {
-            background: rgba(255,95,114,0.06); border: 1px solid rgba(255,95,114,0.2);
-            border-radius: 7px; padding: 9px 12px; font-family: var(--mono);
-            font-size: 10px; color: var(--red); display: none; line-height: 1.6; margin-top: 8px;
-        }
+        .error-box { background: rgba(255,95,114,0.06); border: 1px solid rgba(255,95,114,0.2); border-radius: 7px; padding: 9px 12px; font-family: var(--mono); font-size: 10px; color: var(--red); display: none; line-height: 1.6; margin-top: 8px; }
         .error-box.visible { display: block; }
 
-        /* Info panels */
-        .info-panel {
-            background: var(--surface); border: 1px solid var(--border);
-            border-radius: 9px; padding: 12px 14px;
-        }
+        .info-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px; }
 
-        .info-row {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 6px 0; border-bottom: 1px solid var(--border);
-            font-family: var(--mono); font-size: 10px;
-        }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 10px; }
         .info-row:last-child { border-bottom: none; padding-bottom: 0; }
         .info-row-label { color: var(--muted2); }
         .info-row-value { font-weight: 600; color: var(--text); }
@@ -189,18 +147,8 @@
         .info-row-value.red    { color: var(--red); }
         .info-row-value.accent { color: var(--accent); }
 
-        /* Rules panel */
-        .rules-panel {
-            background: rgba(108,92,231,0.04);
-            border: 1px solid rgba(108,92,231,0.12);
-            border-radius: 9px; padding: 12px 14px;
-        }
-
-        .rule-item {
-            display: flex; align-items: flex-start; gap: 8px;
-            padding: 5px 0; border-bottom: 1px solid var(--border);
-            font-family: var(--mono); font-size: 10px; line-height: 1.5;
-        }
+        .rules-panel { background: rgba(108,92,231,0.04); border: 1px solid rgba(108,92,231,0.12); border-radius: 9px; padding: 12px 14px; }
+        .rule-item { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 10px; line-height: 1.5; }
         .rule-item:last-child { border-bottom: none; padding-bottom: 0; }
         .rule-icon { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
         .rule-text { color: var(--muted2); }
@@ -209,152 +157,95 @@
         /* ── Right panel ── */
         .right-panel { padding: 24px 28px; overflow-y: auto; }
 
-        .empty-state {
-            height: 100%; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; gap: 8px;
-            color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: center;
-        }
-        .empty-icon {
-            width: 56px; height: 56px; border: 1px solid var(--border2); border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 24px; margin-bottom: 4px; color: var(--muted);
-            background: var(--surface);
-        }
+        .empty-state { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: center; }
+        .empty-icon { width: 56px; height: 56px; border: 1px solid var(--border2); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 4px; color: var(--muted); background: var(--surface); }
         .empty-hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
         /* ── Stats ── */
-        .stats-row {
-            display: grid; grid-template-columns: repeat(3, 1fr);
-            gap: 12px; margin-bottom: 24px;
-        }
+        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
 
-        .stat-card {
-            background: var(--card); border: 1px solid var(--border);
-            border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden;
-        }
-        .stat-card::before {
-            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-        }
+        .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; position: relative; overflow: hidden; }
+        .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
         .stat-card.additions::before { background: linear-gradient(90deg, var(--green), transparent); }
         .stat-card.removals::before  { background: linear-gradient(90deg, var(--red), transparent); }
         .stat-card.processes::before { background: linear-gradient(90deg, var(--accent), transparent); }
 
-        .stat-label {
-            font-family: var(--mono); font-size: 9px; color: var(--muted2);
-            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px;
-        }
+        .stat-label { font-family: var(--mono); font-size: 9px; color: var(--muted2); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
         .stat-value { font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -2px; font-family: var(--mono); }
         .stat-card.additions .stat-value { color: var(--green); }
         .stat-card.removals  .stat-value { color: var(--red); }
         .stat-card.processes .stat-value { color: var(--accent); }
         .stat-sub { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 5px; }
 
-        /* ── Section title ── */
-        .sec-title {
-            font-family: var(--mono); font-size: 9px; color: var(--muted2);
-            letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 12px;
-            display: flex; align-items: center; gap: 8px;
-        }
+        .sec-title { font-family: var(--mono); font-size: 9px; color: var(--muted2); letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .sec-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-        /* ── Process arrow view ── */
-        .process-list {
-            display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px;
+        /* ── Graph launch buttons ── */
+        .graph-btns { display: flex; gap: 10px; margin-bottom: 24px; }
+
+        .graph-launch-btn {
+            flex: 1; background: var(--card); border: 1px solid var(--border2);
+            border-radius: 9px; padding: 12px 16px; color: var(--text);
+            font-family: var(--sans); font-size: 12px; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; gap: 10px; transition: border-color 0.2s, background 0.2s, transform 0.15s;
         }
+        .graph-launch-btn:hover { border-color: var(--accent); background: var(--card2); transform: translateY(-1px); }
+
+        .graph-launch-icon {
+            width: 32px; height: 32px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+            font-size: 16px; flex-shrink: 0;
+        }
+        .graph-launch-icon.process { background: rgba(108,92,231,0.15); }
+        .graph-launch-icon.file    { background: rgba(0,229,160,0.12); }
+
+        .graph-launch-label { font-size: 12px; font-weight: 600; }
+        .graph-launch-sub { font-size: 10px; color: var(--muted2); font-weight: 400; margin-top: 1px; }
+
+        /* ── Process arrow view ── */
+        .process-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
 
         .process-row {
-            background: var(--card); border: 1px solid var(--border);
-            border-radius: 9px; padding: 12px 16px;
-            display: flex; align-items: flex-start; gap: 12px;
-            transition: border-color 0.2s, background 0.2s;
-            animation: fadeUp 0.3s ease both;
-            cursor: default;
+            background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 12px 16px;
+            display: flex; align-items: flex-start; gap: 12px; transition: border-color 0.2s, background 0.2s, transform 0.15s;
+            animation: fadeUp 0.3s ease both; cursor: pointer;
         }
-        .process-row:hover { border-color: var(--border2); background: var(--card2); }
+        .process-row:hover { border-color: var(--accent); background: var(--card2); transform: translateY(-1px); }
 
-        .process-left {
-            display: flex; flex-direction: column; align-items: center; gap: 4px;
-            flex-shrink: 0; min-width: 90px;
-        }
+        .process-left { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; min-width: 90px; }
 
-        .process-name-badge {
-            background: rgba(108,92,231,0.12);
-            border: 1px solid rgba(108,92,231,0.25);
-            border-radius: 6px; padding: 5px 10px;
-            font-family: var(--mono); font-size: 11px; font-weight: 600;
-            color: var(--accent); white-space: nowrap;
-            text-align: center; width: 100%;
-        }
+        .process-name-badge { background: rgba(108,92,231,0.12); border: 1px solid rgba(108,92,231,0.25); border-radius: 6px; padding: 5px 10px; font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; text-align: center; width: 100%; }
+        .process-count-badge { font-family: var(--mono); font-size: 9px; color: var(--muted2); }
 
-        .process-count-badge {
-            font-family: var(--mono); font-size: 9px; color: var(--muted2);
-        }
+        .arrow-connector { display: flex; align-items: center; padding-top: 8px; flex-shrink: 0; color: var(--border2); font-size: 18px; font-family: var(--mono); letter-spacing: -2px; }
 
-        .arrow-connector {
-            display: flex; align-items: center; padding-top: 8px; flex-shrink: 0;
-            color: var(--border2); font-size: 18px; font-family: var(--mono);
-            letter-spacing: -2px;
-        }
+        .process-files-flow { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 4px; flex: 1; }
 
-        .process-files-flow {
-            display: flex; flex-wrap: wrap; gap: 5px; padding-top: 4px; flex: 1;
-        }
+        .file-chip { display: flex; align-items: center; gap: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-family: var(--mono); font-size: 10px; color: var(--text); transition: border-color 0.15s; }
+        .file-chip:hover { border-color: var(--border2); }
 
-        .file-chip {
-            display: flex; align-items: center; gap: 5px;
-            background: var(--surface); border: 1px solid var(--border);
-            border-radius: 5px; padding: 4px 8px;
-            font-family: var(--mono); font-size: 10px; color: var(--text);
-            transition: border-color 0.15s, background 0.15s;
-        }
-        .file-chip:hover { border-color: var(--border2); background: var(--card2); }
-
-        .lang-dot {
-            width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
-        }
+        .lang-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
         .lang-dot.java { background: #f78a6a; }
         .lang-dot.js   { background: var(--yellow); }
 
         /* ── Changes ── */
         .filter-bar { display: flex; gap: 5px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
 
-        .filter-btn {
-            background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
-            padding: 3px 10px; color: var(--muted2); font-family: var(--mono); font-size: 9px;
-            letter-spacing: 0.5px; cursor: pointer; transition: all 0.15s;
-        }
+        .filter-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 3px 10px; color: var(--muted2); font-family: var(--mono); font-size: 9px; letter-spacing: 0.5px; cursor: pointer; transition: all 0.15s; }
         .filter-btn:hover { border-color: var(--accent); color: var(--text); }
         .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(108,92,231,0.08); }
 
-        .search-input {
-            background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
-            padding: 3px 10px; color: var(--text); font-family: var(--mono); font-size: 10px;
-            outline: none; margin-left: auto; width: 160px; transition: border-color 0.2s;
-        }
+        .search-input { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 3px 10px; color: var(--text); font-family: var(--mono); font-size: 10px; outline: none; margin-left: auto; width: 160px; transition: border-color 0.2s; }
         .search-input:focus { border-color: var(--accent); }
         .search-input::placeholder { color: var(--muted); }
 
         .changes-list { display: flex; flex-direction: column; gap: 3px; }
 
-        .change-item {
-            background: var(--card); border: 1px solid var(--border); border-radius: 6px;
-            padding: 7px 12px; display: grid;
-            grid-template-columns: 28px 52px 1fr auto;
-            align-items: center; gap: 9px;
-            font-family: var(--mono); font-size: 10px;
-            transition: background 0.15s; animation: slideIn 0.2s ease both;
-        }
+        .change-item { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; display: grid; grid-template-columns: 28px 52px 1fr auto; align-items: center; gap: 9px; font-family: var(--mono); font-size: 10px; transition: background 0.15s; animation: slideIn 0.2s ease both; }
         .change-item:hover { background: var(--surface); }
 
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-4px); }
-            to   { opacity: 1; transform: translateX(0); }
-        }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
 
-        .change-badge {
-            font-size: 10px; font-weight: 700; padding: 2px 5px;
-            border-radius: 3px; text-align: center; font-family: var(--mono);
-        }
+        .change-badge { font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 3px; text-align: center; font-family: var(--mono); }
         .change-badge.addition { background: rgba(0,229,160,0.08); color: var(--green); border: 1px solid rgba(0,229,160,0.15); }
         .change-badge.removal  { background: rgba(255,95,114,0.08); color: var(--red); border: 1px solid rgba(255,95,114,0.15); }
 
@@ -368,12 +259,82 @@
         #results.visible { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
+        /* ── Graph Modal ── */
+        .graph-modal {
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(8,8,14,0.96); backdrop-filter: blur(8px);
+            display: none; flex-direction: column;
+        }
+        .graph-modal.visible { display: flex; animation: fadeUp 0.25s ease; }
+
+        .graph-modal-header {
+            padding: 14px 24px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 12px;
+            background: var(--surface); flex-shrink: 0;
+        }
+
+        .graph-modal-title { font-size: 14px; font-weight: 700; }
+        .graph-modal-sub { font-family: var(--mono); font-size: 10px; color: var(--muted2); margin-left: 4px; }
+
+        .graph-modal-close {
+            margin-left: auto; background: var(--card); border: 1px solid var(--border);
+            border-radius: 6px; padding: 5px 12px; color: var(--text);
+            font-family: var(--mono); font-size: 11px; cursor: pointer; transition: border-color 0.2s;
+        }
+        .graph-modal-close:hover { border-color: var(--red); color: var(--red); }
+
+        .graph-modal-body { flex: 1; position: relative; }
+
+        #processCy, #fileCy { width: 100%; height: 100%; }
+
+        /* ── Graph legend ── */
+        .graph-legend {
+            position: absolute; bottom: 20px; left: 20px;
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 14px;
+            font-family: var(--mono); font-size: 10px;
+            display: flex; flex-direction: column; gap: 6px;
+            pointer-events: none;
+        }
+
+        .legend-title { color: var(--muted2); letter-spacing: 1px; text-transform: uppercase; font-size: 9px; margin-bottom: 2px; }
+
+        .legend-item { display: flex; align-items: center; gap: 8px; color: var(--text); }
+
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .legend-line { width: 20px; height: 2px; flex-shrink: 0; }
+
+        /* ── Graph controls ── */
+        .graph-controls {
+            position: absolute; top: 16px; right: 16px;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+
+        .graph-ctrl-btn {
+            width: 32px; height: 32px; background: var(--card); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 16px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: border-color 0.2s; font-family: var(--mono);
+        }
+        .graph-ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* ── Graph tooltip ── */
+        .graph-tooltip {
+            position: absolute; background: var(--card); border: 1px solid var(--border);
+            border-radius: 7px; padding: 8px 12px; font-family: var(--mono); font-size: 10px;
+            pointer-events: none; display: none; z-index: 10; max-width: 200px;
+        }
+        .graph-tooltip.visible { display: block; }
+        .graph-tooltip-title { color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+        .graph-tooltip-row { color: var(--muted2); line-height: 1.6; }
+
         @media (max-width: 860px) {
             .layout { grid-template-columns: 1fr; }
             .left-panel { border-right: none; border-bottom: 1px solid var(--border); }
             header { padding: 12px 16px; }
             .stats-row { grid-template-columns: 1fr 1fr; }
             .right-panel { padding: 16px; }
+            .graph-btns { flex-direction: column; }
         }
     </style>
 </head>
@@ -398,8 +359,6 @@
 <div class="layout">
     <!-- Left panel -->
     <div class="left-panel">
-
-        <!-- Input -->
         <div>
             <div class="section-head">repository</div>
             <div class="field">
@@ -413,88 +372,41 @@
             <div class="error-box" id="errorBox"></div>
         </div>
 
-        <!-- Last run summary -->
         <div id="summaryBox" style="display:none;">
             <div class="section-head">last run</div>
             <div class="info-panel">
-                <div class="info-row">
-                    <span class="info-row-label">Additions</span>
-                    <span class="info-row-value green" id="infoAdditions">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-row-label">Removals</span>
-                    <span class="info-row-value red" id="infoRemovals">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-row-label">Processes Hit</span>
-                    <span class="info-row-value accent" id="infoProcesses">—</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-row-label">Total Changes</span>
-                    <span class="info-row-value" id="infoTotal">—</span>
-                </div>
+                <div class="info-row"><span class="info-row-label">Additions</span><span class="info-row-value green" id="infoAdditions">—</span></div>
+                <div class="info-row"><span class="info-row-label">Removals</span><span class="info-row-value red" id="infoRemovals">—</span></div>
+                <div class="info-row"><span class="info-row-label">Processes Hit</span><span class="info-row-value accent" id="infoProcesses">—</span></div>
+                <div class="info-row"><span class="info-row-label">Total Changes</span><span class="info-row-value" id="infoTotal">—</span></div>
             </div>
         </div>
 
-        <!-- Pipeline -->
         <div>
             <div class="section-head">pipeline</div>
             <div class="info-panel">
-                <div class="info-row">
-                    <span class="info-row-label">① Clone &amp; Diff</span>
-                    <span class="info-row-value" style="color:var(--muted2)">last 2 commits</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-row-label">② Parse AST</span>
-                    <span class="info-row-value" style="color:var(--muted2)">Java &amp; JS</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-row-label">③ Build Graph</span>
-                    <span class="info-row-value" style="color:var(--muted2)">Neo4j</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-row-label">④ Trace Impact</span>
-                    <span class="info-row-value" style="color:var(--muted2)">reverse DFS</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-row-label">⑤ Map Processes</span>
-                    <span class="info-row-value" style="color:var(--muted2)">folder-level</span>
-                </div>
+                <div class="info-row"><span class="info-row-label">① Clone &amp; Diff</span><span class="info-row-value" style="color:var(--muted2)">last 2 commits</span></div>
+                <div class="info-row"><span class="info-row-label">② Parse AST</span><span class="info-row-value" style="color:var(--muted2)">Java &amp; JS</span></div>
+                <div class="info-row"><span class="info-row-label">③ Build Graph</span><span class="info-row-value" style="color:var(--muted2)">Neo4j</span></div>
+                <div class="info-row"><span class="info-row-label">④ Trace Impact</span><span class="info-row-value" style="color:var(--muted2)">reverse DFS</span></div>
+                <div class="info-row"><span class="info-row-label">⑤ Map Processes</span><span class="info-row-value" style="color:var(--muted2)">folder-level</span></div>
             </div>
         </div>
 
-        <!-- Rules -->
         <div>
             <div class="section-head">requirements</div>
             <div class="rules-panel">
-                <div class="rule-item">
-                    <span class="rule-icon">›</span>
-                    <span class="rule-text"><strong>2+ commits</strong> — repo must have at least 2 commits to diff</span>
-                </div>
-                <div class="rule-item">
-                    <span class="rule-icon">›</span>
-                    <span class="rule-text"><strong>Public repo</strong> — must be accessible via HTTPS clone</span>
-                </div>
-                <div class="rule-item">
-                    <span class="rule-icon">›</span>
-                    <span class="rule-text"><strong>.java or .js files</strong> — only these are parsed by the AST engine</span>
-                </div>
-                <div class="rule-item">
-                    <span class="rule-icon">›</span>
-                    <span class="rule-text"><strong>Folder = process</strong> — each directory is treated as one process unit</span>
-                </div>
-                <div class="rule-item">
-                    <span class="rule-icon">›</span>
-                    <span class="rule-text"><strong>.git URL format</strong> — must end in <code style="color:var(--accent)">.git</code></span>
-                </div>
+                <div class="rule-item"><span class="rule-icon">›</span><span class="rule-text"><strong>2+ commits</strong> — repo must have at least 2 commits to diff</span></div>
+                <div class="rule-item"><span class="rule-icon">›</span><span class="rule-text"><strong>Public repo</strong> — must be accessible via HTTPS clone</span></div>
+                <div class="rule-item"><span class="rule-icon">›</span><span class="rule-text"><strong>.java or .js files</strong> — only these are parsed by the AST engine</span></div>
+                <div class="rule-item"><span class="rule-icon">›</span><span class="rule-text"><strong>Folder = process</strong> — each directory is treated as one process unit</span></div>
+                <div class="rule-item"><span class="rule-icon">›</span><span class="rule-text"><strong>.git URL format</strong> — must end in <code style="color:var(--accent)">.git</code></span></div>
             </div>
         </div>
-
     </div>
 
     <!-- Right panel -->
     <div class="right-panel">
-
         <div class="empty-state" id="emptyState">
             <div class="empty-icon">⬡</div>
             <div>No analysis run yet</div>
@@ -502,7 +414,6 @@
         </div>
 
         <div id="results">
-
             <!-- Stats -->
             <div class="stats-row">
                 <div class="stat-card additions">
@@ -522,7 +433,26 @@
                 </div>
             </div>
 
-            <!-- Affected Processes — arrow view -->
+            <!-- Graph launch buttons -->
+            <div class="sec-title">visualize</div>
+            <div class="graph-btns">
+                <button class="graph-launch-btn" onclick="openProcessGraph()">
+                    <div class="graph-launch-icon process">⬡</div>
+                    <div>
+                        <div class="graph-launch-label">Process Graph</div>
+                        <div class="graph-launch-sub">Process nodes with dependency edges</div>
+                    </div>
+                </button>
+                <button class="graph-launch-btn" onclick="openFileGraph()">
+                    <div class="graph-launch-icon file">◈</div>
+                    <div>
+                        <div class="graph-launch-label">File Graph</div>
+                        <div class="graph-launch-sub">File nodes grouped by process</div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Affected Processes -->
             <div class="sec-title">affected processes</div>
             <div class="process-list" id="processList"></div>
 
@@ -538,14 +468,76 @@
                 <input class="search-input" id="searchInput" placeholder="Search..." oninput="applyFilters()"/>
             </div>
             <div class="changes-list" id="changesList"></div>
-
         </div>
+    </div>
+</div>
+
+<!-- Process Graph Modal -->
+<div class="graph-modal" id="processGraphModal">
+    <div class="graph-modal-header">
+        <div class="graph-launch-icon process" style="width:28px;height:28px;font-size:14px;">⬡</div>
+        <span class="graph-modal-title">Process Graph</span>
+        <span class="graph-modal-sub">— dependency relationships between affected processes</span>
+        <button class="graph-modal-close" onclick="closeModal('processGraphModal')">✕ Close</button>
+    </div>
+    <div class="graph-modal-body">
+        <div id="processCy"></div>
+        <div class="graph-legend">
+            <div class="legend-title">Legend</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Affected process</div>
+            <div class="legend-item"><div class="legend-line" style="background:var(--muted2)"></div> Shared dependency</div>
+        </div>
+        <div class="graph-controls">
+            <button class="graph-ctrl-btn" onclick="processCy && processCy.fit()" title="Fit">⊡</button>
+            <button class="graph-ctrl-btn" onclick="processCy && processCy.zoom(processCy.zoom()*1.2)" title="Zoom in">+</button>
+            <button class="graph-ctrl-btn" onclick="processCy && processCy.zoom(processCy.zoom()*0.8)" title="Zoom out">−</button>
+        </div>
+        <div class="graph-tooltip" id="processTooltip"></div>
+    </div>
+</div>
+
+<!-- File Graph Modal -->
+<div class="graph-modal" id="fileGraphModal">
+    <div class="graph-modal-header">
+        <div class="graph-launch-icon file" style="width:28px;height:28px;font-size:14px;">◈</div>
+        <span class="graph-modal-title">File Graph</span>
+        <span class="graph-modal-sub">— files grouped by process with inferred connections</span>
+        <button class="graph-modal-close" onclick="closeModal('fileGraphModal')">✕ Close</button>
+    </div>
+    <div class="graph-modal-body">
+        <div id="fileCy"></div>
+        <div class="graph-legend">
+            <div class="legend-title">Legend</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f78a6a"></div> Java file</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> JS file</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent);opacity:0.4;border:2px solid var(--accent)"></div> Process group</div>
+            <div class="legend-item"><div class="legend-line" style="background:var(--muted2)"></div> Inferred dependency</div>
+        </div>
+        <div class="graph-controls">
+            <button class="graph-ctrl-btn" onclick="fileCy && fileCy.fit()" title="Fit">⊡</button>
+            <button class="graph-ctrl-btn" onclick="fileCy && fileCy.zoom(fileCy.zoom()*1.2)" title="Zoom in">+</button>
+            <button class="graph-ctrl-btn" onclick="fileCy && fileCy.zoom(fileCy.zoom()*0.8)" title="Zoom out">−</button>
+        </div>
+        <div class="graph-tooltip" id="fileTooltip"></div>
     </div>
 </div>
 
 <script>
     let allChanges = [], currentFilter = 'all';
+    let affectedProcessMap = {};
+    let processCy = null, fileCy = null;
 
+    // ── Process colors ──────────────────────────────────────
+    const PROCESS_COLORS = [
+        '#6c5ce7','#e84393','#00e5a0','#ffc142','#4d9fff',
+        '#ff5f72','#a29bfe','#fd79a8','#55efc4','#fdcb6e'
+    ];
+
+    function getProcessColor(index) {
+        return PROCESS_COLORS[index % PROCESS_COLORS.length];
+    }
+
+    // ── Analysis ────────────────────────────────────────────
     async function runAnalysis() {
         const url = document.getElementById('repoUrl').value.trim();
         const btn = document.getElementById('analyzeBtn');
@@ -585,10 +577,10 @@
 
     function renderResults(data) {
         allChanges = data.rawChanges || [];
-        const pm = data.affectedProcessMap || {};
+        affectedProcessMap = data.affectedProcessMap || {};
         const add  = allChanges.filter(c => c.changeType === 'ADDITION').length;
         const rem  = allChanges.filter(c => c.changeType === 'REMOVAL').length;
-        const proc = Object.keys(pm).length;
+        const proc = Object.keys(affectedProcessMap).length;
 
         animateCounter('statAdditions', add);
         animateCounter('statRemovals', rem);
@@ -600,7 +592,7 @@
         document.getElementById('infoTotal').textContent     = allChanges.length;
         document.getElementById('summaryBox').style.display  = 'block';
 
-        renderProcessList(pm);
+        renderProcessList(affectedProcessMap);
         renderChanges(allChanges);
 
         document.getElementById('emptyState').style.display = 'none';
@@ -610,34 +602,23 @@
     function animateCounter(id, target) {
         const el = document.getElementById(id); let val = 0;
         const step = Math.max(1, Math.ceil(target / 20));
-        const iv = setInterval(() => {
-            val = Math.min(val + step, target); el.textContent = val;
-            if (val >= target) clearInterval(iv);
-        }, 30);
+        const iv = setInterval(() => { val = Math.min(val + step, target); el.textContent = val; if (val >= target) clearInterval(iv); }, 30);
     }
 
     function renderProcessList(pm) {
-        const list = document.getElementById('processList');
-        list.innerHTML = '';
+        const list = document.getElementById('processList'); list.innerHTML = '';
         const entries = Object.entries(pm);
-        if (!entries.length) {
-            list.innerHTML = '<div class="empty">No affected processes detected</div>';
-            return;
-        }
+        if (!entries.length) { list.innerHTML = '<div class="empty">No affected processes detected</div>'; return; }
         entries.forEach(([proc, files], i) => {
             const row = document.createElement('div');
             row.className = 'process-row';
             row.style.animationDelay = `${i * 40}ms`;
-
+            row.title = 'Click to open file graph';
+            row.onclick = () => openFileGraph();
             const filesHtml = files.map(f => {
-                const name = f.filename || 'unknown';
-                const lang = (f.language || '').toLowerCase();
-                return `<div class="file-chip">
-          <span class="lang-dot ${lang}"></span>
-          ${escHtml(name)}
-        </div>`;
+                const name = f.filename || 'unknown', lang = (f.language || '').toLowerCase();
+                return `<div class="file-chip"><span class="lang-dot ${lang}"></span>${escHtml(name)}</div>`;
             }).join('');
-
             row.innerHTML = `
         <div class="process-left">
           <div class="process-name-badge">${escHtml(proc)}</div>
@@ -651,8 +632,7 @@
     }
 
     function renderChanges(changes) {
-        const list = document.getElementById('changesList');
-        list.innerHTML = '';
+        const list = document.getElementById('changesList'); list.innerHTML = '';
         if (!changes.length) { list.innerHTML = '<div class="empty">No changes detected</div>'; return; }
         changes.forEach((c, i) => {
             const param = c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter;
@@ -660,9 +640,7 @@
             const fname = c.affectedCu ? (c.affectedCu.filename || '') : '';
             const item  = document.createElement('div');
             item.className = 'change-item';
-            item.dataset.type = c.changeType;
-            item.dataset.category = cat;
-            item.dataset.param = param.toLowerCase();
+            item.dataset.type = c.changeType; item.dataset.category = cat; item.dataset.param = param.toLowerCase();
             item.style.animationDelay = `${Math.min(i * 12, 300)}ms`;
             item.innerHTML = `
         <span class="change-badge ${c.changeType === 'ADDITION' ? 'addition' : 'removal'}">${c.changeType === 'ADDITION' ? '+' : '−'}</span>
@@ -674,6 +652,357 @@
         });
     }
 
+    // ── Graph helpers ────────────────────────────────────────
+
+    // Build process→methods map from changes
+    function buildProcessMethodMap() {
+        const map = {};
+        for (const [proc, files] of Object.entries(affectedProcessMap)) {
+            map[proc] = new Set();
+            const fileNames = files.map(f => f.filename);
+            for (const c of allChanges) {
+                const fname = c.affectedCu ? c.affectedCu.filename : '';
+                if (fileNames.includes(fname)) {
+                    const param = c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter;
+                    if (param) map[proc].add(param);
+                }
+            }
+        }
+        return map;
+    }
+
+    // Infer process edges from shared method/import names
+    function inferProcessEdges(processMethodMap) {
+        const edges = [];
+        const procs = Object.keys(processMethodMap);
+        for (let i = 0; i < procs.length; i++) {
+            for (let j = i + 1; j < procs.length; j++) {
+                const a = procs[i], b = procs[j];
+                const shared = [...processMethodMap[a]].filter(m => processMethodMap[b].has(m));
+                if (shared.length > 0) {
+                    edges.push({ source: a, target: b, shared: shared.slice(0, 3) });
+                }
+            }
+        }
+        return edges;
+    }
+
+    // ── Process Graph ────────────────────────────────────────
+    function openProcessGraph() {
+        const modal = document.getElementById('processGraphModal');
+        modal.classList.add('visible');
+
+        const entries = Object.entries(affectedProcessMap);
+        if (!entries.length) return;
+
+        const processMethodMap = buildProcessMethodMap();
+        const edges = inferProcessEdges(processMethodMap);
+
+        const nodes = entries.map(([proc, files], i) => ({
+            data: {
+                id: proc,
+                label: proc,
+                fileCount: files.length,
+                color: getProcessColor(i)
+            }
+        }));
+
+        const cyEdges = edges.map((e, i) => ({
+            data: {
+                id: `e${i}`,
+                source: e.source,
+                target: e.target,
+                shared: e.shared.join(', ')
+            }
+        }));
+
+        if (processCy) processCy.destroy();
+
+        processCy = cytoscape({
+            container: document.getElementById('processCy'),
+            elements: { nodes, edges: cyEdges },
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': 'data(color)',
+                        'background-opacity': 0.85,
+                        'label': 'data(label)',
+                        'color': '#e2e2ec',
+                        'font-size': '11px',
+                        'font-family': 'IBM Plex Mono',
+                        'font-weight': '600',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '80px',
+                        'width': 'mapData(fileCount, 1, 5, 60, 100)',
+                        'height': 'mapData(fileCount, 1, 5, 60, 100)',
+                        'border-width': 2,
+                        'border-color': '#ffffff22',
+                        'shadow-blur': 16,
+                        'shadow-color': 'data(color)',
+                        'shadow-opacity': 0.4,
+                        'shadow-offset-x': 0,
+                        'shadow-offset-y': 0,
+                    }
+                },
+                {
+                    selector: 'node:hover',
+                    style: {
+                        'border-color': '#ffffff88',
+                        'border-width': 3,
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1.5,
+                        'line-color': '#3a3a52',
+                        'target-arrow-color': '#3a3a52',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'opacity': 0.7,
+                    }
+                },
+                {
+                    selector: 'edge:hover',
+                    style: {
+                        'line-color': '#6c5ce7',
+                        'target-arrow-color': '#6c5ce7',
+                        'opacity': 1,
+                        'width': 2,
+                    }
+                }
+            ],
+            layout: {
+                name: 'cose',
+                animate: true,
+                animationDuration: 600,
+                nodeRepulsion: 8000,
+                idealEdgeLength: 200,
+                nodeOverlap: 20,
+                padding: 60,
+            },
+            userZoomingEnabled: true,
+            userPanningEnabled: true,
+            backgroundColor: '#0b0b10',
+        });
+
+        // Tooltip on hover
+        const tooltip = document.getElementById('processTooltip');
+        processCy.on('mouseover', 'node', evt => {
+            const node = evt.target;
+            const pos = evt.renderedPosition;
+            tooltip.innerHTML = `<div class="graph-tooltip-title">${node.data('label')}</div><div class="graph-tooltip-row">${node.data('fileCount')} affected file(s)</div>`;
+            tooltip.style.left = (pos.x + 12) + 'px';
+            tooltip.style.top  = (pos.y - 10) + 'px';
+            tooltip.classList.add('visible');
+        });
+        processCy.on('mouseout', 'node', () => tooltip.classList.remove('visible'));
+
+        processCy.on('mouseover', 'edge', evt => {
+            const edge = evt.target;
+            const pos  = evt.renderedPosition;
+            tooltip.innerHTML = `<div class="graph-tooltip-title">${edge.data('source')} ↔ ${edge.data('target')}</div><div class="graph-tooltip-row">Shared: ${edge.data('shared') || 'inferred'}</div>`;
+            tooltip.style.left = (pos.x + 12) + 'px';
+            tooltip.style.top  = (pos.y - 10) + 'px';
+            tooltip.classList.add('visible');
+        });
+        processCy.on('mouseout', 'edge', () => tooltip.classList.remove('visible'));
+    }
+
+    // ── File Graph ───────────────────────────────────────────
+    function openFileGraph() {
+        const modal = document.getElementById('fileGraphModal');
+        modal.classList.add('visible');
+
+        const entries = Object.entries(affectedProcessMap);
+        if (!entries.length) return;
+
+        const nodes = [];
+        const edges = [];
+
+        // Process parent nodes (compound)
+        entries.forEach(([proc, files], i) => {
+            nodes.push({
+                data: { id: `proc_${proc}`, label: proc, isProcess: true, color: getProcessColor(i) }
+            });
+
+            // File nodes inside process
+            files.forEach(f => {
+                const fname  = f.filename || 'unknown';
+                const lang   = (f.language || '').toLowerCase();
+                const color  = lang === 'java' ? '#f78a6a' : '#ffc142';
+                nodes.push({
+                    data: {
+                        id: fname,
+                        label: fname.replace('.java','').replace('.js',''),
+                        parent: `proc_${proc}`,
+                        lang,
+                        color,
+                        process: proc,
+                        fileCount: files.length
+                    }
+                });
+            });
+        });
+
+        // Infer file-to-file edges from shared changed method names
+        const fileMethodMap = {};
+        for (const [proc, files] of Object.entries(affectedProcessMap)) {
+            for (const f of files) {
+                const fname = f.filename || 'unknown';
+                fileMethodMap[fname] = new Set();
+                for (const c of allChanges) {
+                    const cf = c.affectedCu ? c.affectedCu.filename : '';
+                    if (cf === fname) {
+                        const param = c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter;
+                        if (param) fileMethodMap[fname].add(param);
+                    }
+                }
+            }
+        }
+
+        const allFiles = Object.keys(fileMethodMap);
+        let edgeId = 0;
+        for (let i = 0; i < allFiles.length; i++) {
+            for (let j = i + 1; j < allFiles.length; j++) {
+                const a = allFiles[i], b = allFiles[j];
+                const shared = [...fileMethodMap[a]].filter(m => fileMethodMap[b].has(m));
+                if (shared.length > 0) {
+                    edges.push({
+                        data: { id: `fe${edgeId++}`, source: a, target: b, shared: shared.slice(0,2).join(', ') }
+                    });
+                }
+            }
+        }
+
+        if (fileCy) fileCy.destroy();
+
+        fileCy = cytoscape({
+            container: document.getElementById('fileCy'),
+            elements: { nodes, edges },
+            style: [
+                {
+                    selector: 'node[isProcess]',
+                    style: {
+                        'background-color': 'data(color)',
+                        'background-opacity': 0.08,
+                        'border-width': 1.5,
+                        'border-color': 'data(color)',
+                        'border-opacity': 0.4,
+                        'label': 'data(label)',
+                        'color': 'data(color)',
+                        'font-size': '11px',
+                        'font-family': 'IBM Plex Mono',
+                        'font-weight': '700',
+                        'text-valign': 'top',
+                        'text-halign': 'center',
+                        'text-margin-y': -8,
+                        'shape': 'roundrectangle',
+                        'padding': '20px',
+                    }
+                },
+                {
+                    selector: 'node:not([isProcess])',
+                    style: {
+                        'background-color': 'data(color)',
+                        'background-opacity': 0.9,
+                        'label': 'data(label)',
+                        'color': '#0b0b10',
+                        'font-size': '9px',
+                        'font-family': 'IBM Plex Mono',
+                        'font-weight': '600',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '70px',
+                        'width': 70,
+                        'height': 30,
+                        'shape': 'roundrectangle',
+                        'border-width': 0,
+                    }
+                },
+                {
+                    selector: 'node:not([isProcess]):hover',
+                    style: {
+                        'border-width': 2,
+                        'border-color': '#ffffff',
+                        'background-opacity': 1,
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1.5,
+                        'line-color': '#3a3a52',
+                        'line-style': 'dashed',
+                        'line-dash-pattern': [4, 3],
+                        'target-arrow-shape': 'none',
+                        'curve-style': 'bezier',
+                        'opacity': 0.5,
+                    }
+                },
+                {
+                    selector: 'edge:hover',
+                    style: {
+                        'line-color': '#6c5ce7',
+                        'opacity': 1,
+                        'width': 2,
+                    }
+                }
+            ],
+            layout: {
+                name: 'cose',
+                animate: true,
+                animationDuration: 700,
+                nodeRepulsion: 6000,
+                idealEdgeLength: 150,
+                nodeOverlap: 10,
+                padding: 50,
+                componentSpacing: 80,
+            },
+            userZoomingEnabled: true,
+            userPanningEnabled: true,
+        });
+
+        // Tooltip
+        const tooltip = document.getElementById('fileTooltip');
+        fileCy.on('mouseover', 'node:not([isProcess])', evt => {
+            const node = evt.target;
+            const pos  = evt.renderedPosition;
+            tooltip.innerHTML = `<div class="graph-tooltip-title">${node.data('label')}</div><div class="graph-tooltip-row">Process: ${node.data('process')}</div><div class="graph-tooltip-row">Lang: ${node.data('lang').toUpperCase()}</div>`;
+            tooltip.style.left = (pos.x + 12) + 'px';
+            tooltip.style.top  = (pos.y - 10) + 'px';
+            tooltip.classList.add('visible');
+        });
+        fileCy.on('mouseout', 'node', () => tooltip.classList.remove('visible'));
+
+        fileCy.on('mouseover', 'edge', evt => {
+            const edge = evt.target;
+            const pos  = evt.renderedPosition;
+            tooltip.innerHTML = `<div class="graph-tooltip-title">${edge.data('source')} ↔ ${edge.data('target')}</div><div class="graph-tooltip-row">Shared: ${edge.data('shared') || 'inferred'}</div>`;
+            tooltip.style.left = (pos.x + 12) + 'px';
+            tooltip.style.top  = (pos.y - 10) + 'px';
+            tooltip.classList.add('visible');
+        });
+        fileCy.on('mouseout', 'edge', () => tooltip.classList.remove('visible'));
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('visible');
+    }
+
+    // Close modal on Escape
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.graph-modal').forEach(m => m.classList.remove('visible'));
+        }
+        if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') runAnalysis();
+    });
+
+    // ── Filters & helpers ────────────────────────────────────
     function guessCategory(p) {
         if (!p) return 'unknown';
         if (p.includes('.') && /^[a-z]/.test(p)) return 'import';
@@ -699,10 +1028,6 @@
     function escHtml(s) {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
-
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') runAnalysis();
-    });
 </script>
 </body>
 </html>
