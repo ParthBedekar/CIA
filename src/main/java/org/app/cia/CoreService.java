@@ -32,6 +32,7 @@ public class CoreService {
 
     @Value("${app.basepath}")
     private String basePath;
+
     private final CodeUnitNodeRepository repository;
     private final RegistryService registryService = new RegistryService();
     private final DirScanner dirScanner = new DirScanner();
@@ -43,9 +44,8 @@ public class CoreService {
     private List<CodeUnit> oldUnits;
     private List<CodeUnit> currentUnits;
     private Graph<CodeUnit, Edge> codeUnitGraph;
+    private Graph<CodeUnit, Edge> oldCodeUnitGraph;
     private List<Change> changes;
-
-
     private ImpactReport impactReport;
 
     public CoreService(CodeUnitNodeRepository repository) {
@@ -62,48 +62,52 @@ public class CoreService {
                 registry.getPreviousHash()
         );
 
-        // Current snapshot — only files that exist in current
         Map<Language, List<Path>> currentFileMap = new HashMap<>();
-        // Old snapshot — all changed files, including deleted ones
         Map<Language, List<Path>> oldFileMap = new HashMap<>();
 
         for (String file : changedFiles) {
             if (file.contains("node_modules")) continue;
 
             Path currentPath = registry.getCurrentSnapshot().resolve(file);
-            Path oldPath     = registry.getPreviousSnapshot().resolve(file);
+            Path oldPath = registry.getPreviousSnapshot().resolve(file);
 
             boolean inCurrent = Files.exists(currentPath);
-            boolean inOld     = Files.exists(oldPath);
+            boolean inOld = Files.exists(oldPath);
 
             Language lang = null;
-            if (file.endsWith(".java"))      lang = Language.JAVA;
-            else if (file.endsWith(".js"))   lang = Language.JS;
+            if (file.endsWith(".java")) lang = Language.JAVA;
+            else if (file.endsWith(".js")) lang = Language.JS;
             if (lang == null) continue;
 
             if (inCurrent) currentFileMap.computeIfAbsent(lang, k -> new ArrayList<>()).add(currentPath);
-            if (inOld)     oldFileMap.computeIfAbsent(lang, k -> new ArrayList<>()).add(oldPath);
+            if (inOld) oldFileMap.computeIfAbsent(lang, k -> new ArrayList<>()).add(oldPath);
         }
 
         currentUnits = fileDispatcher.dispatch(currentFileMap);
-        oldUnits     = fileDispatcher.dispatch(oldFileMap);
+        oldUnits = fileDispatcher.dispatch(oldFileMap);
     }
-    private Graph<CodeUnit, Edge> oldCodeUnitGraph;
 
     public void buildGraph() {
+        // Current graph — only changed files
         codeUnitGraph = dependencyGraph.buildGraph(currentUnits);
-        oldCodeUnitGraph = dependencyGraph.buildGraph(oldUnits);
+
+        // Old graph — full previous snapshot for complete dependency traversal
+        RepoRegistry registry = registryService.getLastRegistry();
+        Map<Language, List<Path>> fullOldFileMap = dirScanner.traverse(
+                List.of(registry.getPreviousSnapshot())
+        );
+        List<CodeUnit> fullOldUnits = fileDispatcher.dispatch(fullOldFileMap);
+        oldCodeUnitGraph = dependencyGraph.buildGraph(fullOldUnits);
+    }
+
+    public void computeDiff() {
+        changes = astDiffEngine.diff(oldUnits, currentUnits);
     }
 
     public void analyzeImpact() {
         ImpactAnalysisEngine engine = new ImpactAnalysisEngine();
         impactReport = engine.analyze(changes, codeUnitGraph, oldCodeUnitGraph, currentUnits);
     }
-    public void computeDiff() {
-        changes = astDiffEngine.diff(oldUnits, currentUnits);
-    }
-
-
 
     public void persistGraph() {
         repository.saveAll(graphMapper.map(codeUnitGraph));
