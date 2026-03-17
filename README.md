@@ -83,7 +83,7 @@ https://github.com/spring-projects/spring-petclinic.git
 │  RegistryCache │ │  Babel/Node  │ │  Neo4j AuraDB    │
 └────────────────┘ └──────────────┘ └─────────────────┘
 ```
-
+![UML Class Diagram](./docs/uml.png)
 ---
 
 ## Pipeline
