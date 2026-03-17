@@ -27,37 +27,34 @@ public class ImpactAnalysisEngine {
             currentUnitMap.put(cu.getFilename(), cu);
         }
 
-        EdgeReversedGraph<CodeUnit, Edge> reversedCurrent = new EdgeReversedGraph<>(currentGraph);
-        EdgeReversedGraph<CodeUnit, Edge> reversedOld     = new EdgeReversedGraph<>(oldGraph);
+        // Map filename -> oldUnit for finding changed files in oldGraph
+        Map<String, CodeUnit> oldUnitMap = new HashMap<>();
+        for (CodeUnit cu : oldGraph.vertexSet()) {
+            oldUnitMap.put(cu.getFilename(), cu);
+        }
+
+        EdgeReversedGraph<CodeUnit, Edge> reversedOld = new EdgeReversedGraph<>(oldGraph);
 
         for (Change c : changeList) {
             CodeUnit affectedCu = c.getAffectedCu();
+            String filename = affectedCu.getFilename();
 
-            if (c.getChangeType() == ChangeType.REMOVAL) {
-                // Use old graph — find what depended on the removed unit
-                if (oldGraph.containsVertex(affectedCu)) {
-                    DepthFirstIterator<CodeUnit, Edge> dfi =
-                            new DepthFirstIterator<>(reversedOld, affectedCu);
-                    while (dfi.hasNext()) {
-                        CodeUnit old = dfi.next();
-                        // Bridge to current unit by filename if it still exists
-                        CodeUnit current = currentUnitMap.get(old.getFilename());
-                        if (current != null) {
-                            affectedUnits.add(current);
-                        } else {
-                            affectedUnits.add(old);
-                        }
-                    }
+            // Always use oldGraph for traversal — it has the full dependency picture
+            // Find the matching vertex in oldGraph by filename
+            CodeUnit oldCu = oldUnitMap.get(filename);
+
+            if (oldCu != null) {
+                DepthFirstIterator<CodeUnit, Edge> dfi =
+                        new DepthFirstIterator<>(reversedOld, oldCu);
+                while (dfi.hasNext()) {
+                    CodeUnit traversed = dfi.next();
+                    // Bridge to current unit if it still exists, otherwise keep old
+                    CodeUnit current = currentUnitMap.get(traversed.getFilename());
+                    affectedUnits.add(current != null ? current : traversed);
                 }
-            } else {
-                // Use current graph for additions and element-level changes
-                if (currentGraph.containsVertex(affectedCu)) {
-                    DepthFirstIterator<CodeUnit, Edge> dfi =
-                            new DepthFirstIterator<>(reversedCurrent, affectedCu);
-                    while (dfi.hasNext()) {
-                        affectedUnits.add(dfi.next());
-                    }
-                }
+            } else if (c.getChangeType() != ChangeType.REMOVAL) {
+                // New file added — no old equivalent, add itself
+                affectedUnits.add(affectedCu);
             }
         }
 
