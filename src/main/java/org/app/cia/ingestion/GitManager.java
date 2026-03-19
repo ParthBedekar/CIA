@@ -1,6 +1,5 @@
 package org.app.cia.ingestion;
 
-import org.apache.commons.io.FileUtils;
 import org.app.cia.ingestion.Exceptions.GitOperationException;
 
 import java.io.BufferedReader;
@@ -20,6 +19,45 @@ public class GitManager {
         this.baseDirectory = base;
     }
 
+    /**
+     * Returns the name of the currently checked-out branch in the given repo directory.
+     * Uses `git branch --show-current` which works on Git 2.22+.
+     */
+    private String getCurrentBranch(Path repoDirectory) {
+        ProcessBuilder pb = new ProcessBuilder("git", "branch", "--show-current");
+        pb.directory(repoDirectory.toFile());
+        try {
+            Process process = pb.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String branch = reader.readLine();
+            process.waitFor();
+            if (branch != null && !branch.isBlank()) {
+                return branch.trim();
+            }
+        } catch (Exception e) {
+            // fall through to fallback
+        }
+
+        // Fallback: parse `git branch` output for the line starting with '*'
+        ProcessBuilder fallback = new ProcessBuilder("git", "branch");
+        fallback.directory(repoDirectory.toFile());
+        try {
+            Process process = fallback.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("*")) {
+                    return line.substring(1).trim();
+                }
+            }
+            process.waitFor();
+        } catch (Exception e) {
+            throw new GitOperationException("Failed to determine current branch for: " + repoUrl);
+        }
+
+        throw new GitOperationException("Could not detect current branch for: " + repoUrl);
+    }
+
     public void checkoutHash(Path clonedPath, String hash) {
         ProcessBuilder checkout = new ProcessBuilder("git", "checkout", hash);
         checkout.directory(clonedPath.toFile());
@@ -33,19 +71,14 @@ public class GitManager {
     }
 
     public void pullRepo(Path clonedPath) {
-        ProcessBuilder resetMain = new ProcessBuilder("git", "checkout", "main");
-        resetMain.directory(clonedPath.toFile());
-        resetMain.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        resetMain.redirectError(ProcessBuilder.Redirect.DISCARD);
+        String branch = getCurrentBranch(clonedPath);
+
+        ProcessBuilder resetBranch = new ProcessBuilder("git", "checkout", branch);
+        resetBranch.directory(clonedPath.toFile());
+        resetBranch.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        resetBranch.redirectError(ProcessBuilder.Redirect.DISCARD);
         try {
-            int exitCode = resetMain.start().waitFor();
-            if (exitCode != 0) {
-                ProcessBuilder resetMaster = new ProcessBuilder("git", "checkout", "master");
-                resetMaster.directory(clonedPath.toFile());
-                resetMaster.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-                resetMaster.redirectError(ProcessBuilder.Redirect.DISCARD);
-                resetMaster.start().waitFor();
-            }
+            resetBranch.start().waitFor();
         } catch (Exception e) { /* ignore */ }
 
         ProcessBuilder puller = new ProcessBuilder("git", "pull");
@@ -127,19 +160,15 @@ public class GitManager {
     }
 
     public List<String> getCommitHashes(Path repoDirectory) {
-        ProcessBuilder resetMain = new ProcessBuilder("git", "checkout", "master");
-        resetMain.directory(repoDirectory.toFile());
-        resetMain.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        resetMain.redirectError(ProcessBuilder.Redirect.DISCARD);
+        String branch = getCurrentBranch(repoDirectory);
+
+        // Ensure we're on the detected branch before reading its log
+        ProcessBuilder checkout = new ProcessBuilder("git", "checkout", branch);
+        checkout.directory(repoDirectory.toFile());
+        checkout.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        checkout.redirectError(ProcessBuilder.Redirect.DISCARD);
         try {
-            int exitCode = resetMain.start().waitFor();
-            if (exitCode != 0) {
-                ProcessBuilder resetMaster = new ProcessBuilder("git", "checkout", "main");
-                resetMaster.directory(repoDirectory.toFile());
-                resetMaster.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-                resetMaster.redirectError(ProcessBuilder.Redirect.DISCARD);
-                resetMaster.start().waitFor();
-            }
+            checkout.start().waitFor();
         } catch (Exception e) { /* ignore */ }
 
         ProcessBuilder cd = new ProcessBuilder("git", "log", "--format=%H", "-n", "2");

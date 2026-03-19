@@ -45,7 +45,6 @@ async function runAnalysis() {
         const data = await res.json();
         renderResults(data);
         setStatus('done', 'complete');
-        console.log(data);
     } catch (e) {
         showError(e.message || 'Analysis failed. Check the server.');
         setStatus('error', 'error');
@@ -180,306 +179,416 @@ function renderProcesses(pm) {
 
 /* ─────────────────────────────────────────
    Graph (Cytoscape)
+
+   Data reality from the API:
+   - rawChanges have NO affectedCu — changes are not linked to files
+   - affectedProcessMap[proc] = array of CodeUnit (file objects with .classes[])
+   - Each CodeUnit has: filename, language, classes[] → each class has methods[]
+   - We derive file↔file edges by finding method names that appear in BOTH
+     a rawChange AND two different files' class method lists
+   - We derive file↔change edges directly (change symbol matches a method in file)
 ───────────────────────────────────────── */
 
-// Warm palette — no neon
 const PROC_PALETTE = [
     '#c0392b', '#2d6a4f', '#b7580a', '#2c4a7c',
     '#7b3f6e', '#4a6741', '#8c4a2f', '#1a5c6b',
 ];
-
 function procColor(i) { return PROC_PALETTE[i % PROC_PALETTE.length]; }
 
 function buildGraph() {
-    // called when data arrives; actual render happens when graph tab is opened
+    // no-op — rendered on tab open
 }
 
 function renderGraph() {
     const container = document.getElementById('graphContainer');
     if (cy) { cy.destroy(); cy = null; }
-
-    if (activeGraph === 'process') {
-        renderProcessGraph(container);
-    } else {
-        renderFileGraph(container);
-    }
+    if (activeGraph === 'process') renderProcessGraph(container);
+    else renderFileGraph(container);
 }
 
-/* ── Process graph ── */
+/* ── Derive which symbols (method names) belong to each file ──
+   CodeUnit.classes[] → each class has methods[] (array of strings or objects).
+   We extract all method names from a file's class list.                        */
+function extractFileSymbols(codeUnit) {
+    const symbols = new Set();
+    (codeUnit.classes || []).forEach(cls => {
+        (cls.methods || []).forEach(m => {
+            // method might be a string or { name: '...' }
+            const name = typeof m === 'string' ? m : (m.name || '');
+            if (name) symbols.add(name);
+        });
+        // also grab the class name itself
+        const cname = typeof cls === 'string' ? cls : (cls.name || cls.className || '');
+        if (cname) symbols.add(cname);
+    });
+    return symbols;
+}
+
+/* ── All changed symbol names from rawChanges ── */
+function allChangedSymbols() {
+    return new Set(
+        allChanges
+            .map(c => c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter)
+            .filter(Boolean)
+    );
+}
+
+/* ── Process graph ──
+   Nodes  = processes
+   Edges  = two processes share ≥1 changed symbol that appears in both their files */
 function renderProcessGraph(container) {
     const entries = Object.entries(affectedProcessMap);
-    if (!entries.length) return;
+    if (!entries.length) { showGraphEmpty(container, 'No processes in response.'); return; }
 
-    // Build method→processes map for edge inference
-    const procMethods = {};
+    const changed = allChangedSymbols();
+
+    // Build per-process symbol set (intersection of changed symbols ∩ file symbols)
+    const procSymbols = {};
     entries.forEach(([proc, files]) => {
-        procMethods[proc] = new Set();
+        procSymbols[proc] = new Set();
         files.forEach(f => {
-            allChanges
-                .filter(c => c.affectedCu && c.affectedCu.filename === (f.filename || ''))
-                .forEach(c => {
-                    const p = c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter;
-                    if (p) procMethods[proc].add(p);
-                });
+            extractFileSymbols(f).forEach(s => {
+                if (changed.has(s)) procSymbols[proc].add(s);
+            });
         });
+        // If no class/method data, fall back: every changed symbol touches this process
+        if (procSymbols[proc].size === 0) {
+            changed.forEach(s => procSymbols[proc].add(s));
+        }
     });
 
     const nodes = entries.map(([proc, files], i) => ({
         data: {
-            id: proc,
-            label: proc,
+            id: proc, label: proc,
             fileCount: files.length,
-            changeCount: files.reduce((acc, f) =>
-                acc + allChanges.filter(c => c.affectedCu && c.affectedCu.filename === (f.filename || '')).length, 0
-            ),
+            symbolCount: procSymbols[proc].size,
             color: procColor(i),
         }
     }));
 
+    // Also add change nodes — each unique changed symbol is a node
+    const changeNodes = [];
+    const addSymbols  = new Set(allChanges.filter(c => c.changeType === 'ADDITION').map(c => c.newParameter).filter(Boolean));
+    const remSymbols  = new Set(allChanges.filter(c => c.changeType === 'REMOVAL').map(c => c.oldParameter).filter(Boolean));
+
+    changed.forEach(sym => {
+        changeNodes.push({
+            data: {
+                id: `sym::${sym}`,
+                label: sym,
+                isChange: true,
+                changeKind: addSymbols.has(sym) && remSymbols.has(sym) ? 'both'
+                    : addSymbols.has(sym) ? 'add' : 'rem',
+            }
+        });
+    });
+
+    // Edges: process → symbol (if that symbol touches the process)
     const edges = [];
     let eid = 0;
-    for (let i = 0; i < entries.length; i++) {
-        for (let j = i + 1; j < entries.length; j++) {
-            const [a] = entries[i], [b] = entries[j];
-            const shared = [...procMethods[a]].filter(m => procMethods[b].has(m));
-            if (shared.length) {
-                edges.push({ data: {
-                        id: `e${eid++}`, source: a, target: b,
-                        sharedLabel: shared.slice(0, 2).join(', '),
-                        weight: shared.length,
-                    }});
-            }
-        }
-    }
+    entries.forEach(([proc]) => {
+        procSymbols[proc].forEach(sym => {
+            edges.push({ data: {
+                    id: `e${eid++}`, source: proc, target: `sym::${sym}`,
+                }});
+        });
+    });
 
     cy = cytoscape({
         container,
-        elements: { nodes, edges },
+        elements: { nodes: [...nodes, ...changeNodes], edges },
         style: [
+            // Process nodes
             {
-                selector: 'node',
+                selector: 'node[!isChange]',
                 style: {
                     'background-color': 'data(color)',
-                    'background-opacity': 0.9,
+                    'background-opacity': 0.85,
                     'label': 'data(label)',
                     'color': '#f0ece4',
-                    'font-size': '11px',
+                    'font-size': '12px',
                     'font-family': 'Martian Mono, monospace',
-                    'font-weight': '600',
+                    'font-weight': '700',
                     'text-valign': 'center',
                     'text-halign': 'center',
                     'text-wrap': 'wrap',
-                    'text-max-width': '90px',
-                    'width': 'mapData(fileCount, 1, 6, 64, 110)',
-                    'height': 'mapData(fileCount, 1, 6, 64, 110)',
-                    'border-width': 2,
-                    'border-color': 'rgba(255,255,255,0.12)',
+                    'text-max-width': '100px',
+                    'width': 'mapData(fileCount, 1, 6, 70, 120)',
+                    'height': 'mapData(fileCount, 1, 6, 70, 120)',
                     'shape': 'ellipse',
+                    'border-width': 2,
+                    'border-color': 'rgba(255,255,255,0.15)',
+                }
+            },
+            // Change/symbol nodes
+            {
+                selector: 'node[isChange][changeKind="add"]',
+                style: {
+                    'background-color': '#1a3326',
+                    'border-width': 1.5,
+                    'border-color': '#4caf82',
+                    'label': 'data(label)',
+                    'color': '#4caf82',
+                    'font-size': '9px',
+                    'font-family': 'Martian Mono, monospace',
+                    'text-valign': 'center', 'text-halign': 'center',
+                    'text-wrap': 'wrap', 'text-max-width': '80px',
+                    'width': 20, 'height': 20, 'shape': 'diamond',
                 }
             },
             {
-                selector: 'node:selected',
+                selector: 'node[isChange][changeKind="rem"]',
                 style: {
-                    'border-width': 3,
-                    'border-color': 'rgba(255,255,255,0.5)',
+                    'background-color': '#331a1a',
+                    'border-width': 1.5,
+                    'border-color': '#e0705a',
+                    'label': 'data(label)',
+                    'color': '#e0705a',
+                    'font-size': '9px',
+                    'font-family': 'Martian Mono, monospace',
+                    'text-valign': 'center', 'text-halign': 'center',
+                    'text-wrap': 'wrap', 'text-max-width': '80px',
+                    'width': 20, 'height': 20, 'shape': 'diamond',
+                }
+            },
+            {
+                selector: 'node[isChange][changeKind="both"]',
+                style: {
+                    'background-color': '#2a2010',
+                    'border-width': 1.5,
+                    'border-color': '#e8c97a',
+                    'label': 'data(label)',
+                    'color': '#e8c97a',
+                    'font-size': '9px',
+                    'font-family': 'Martian Mono, monospace',
+                    'text-valign': 'center', 'text-halign': 'center',
+                    'text-wrap': 'wrap', 'text-max-width': '80px',
+                    'width': 20, 'height': 20, 'shape': 'diamond',
                 }
             },
             {
                 selector: 'edge',
                 style: {
-                    'width': 'mapData(weight, 1, 5, 1, 3)',
-                    'line-color': '#3a3630',
-                    'target-arrow-color': '#3a3630',
+                    'width': 1.5, 'line-color': '#4a4540',
+                    'target-arrow-color': '#4a4540',
                     'target-arrow-shape': 'triangle',
-                    'curve-style': 'bezier',
-                    'opacity': 0.8,
+                    'curve-style': 'bezier', 'opacity': 0.7,
                 }
             },
-            {
-                selector: 'edge:hover',
-                style: {
-                    'line-color': '#786a5a',
-                    'target-arrow-color': '#786a5a',
-                    'opacity': 1, 'width': 2,
-                }
-            }
+            { selector: 'edge:hover', style: { 'line-color': '#a09080', 'target-arrow-color': '#a09080', 'opacity': 1, 'width': 2 } },
+            { selector: 'node:selected', style: { 'border-width': 3, 'border-color': 'rgba(255,255,255,0.6)' } },
         ],
         layout: {
-            name: nodes.length <= 2 ? 'circle' : 'cose',
-            animate: true, animationDuration: 500,
-            nodeRepulsion: 10000, idealEdgeLength: 200,
-            nodeOverlap: 20, padding: 60,
-            randomize: false,
+            name: 'cose',
+            animate: true, animationDuration: 600,
+            nodeRepulsion: 12000, idealEdgeLength: 160,
+            nodeOverlap: 20, padding: 60, randomize: false,
         },
         userZoomingEnabled: true, userPanningEnabled: true,
     });
 
-    attachTooltip(cy, node => `
-    <div class="tooltip-title">${node.data('label')}</div>
-    <div class="tooltip-row">Files affected: <span>${node.data('fileCount')}</span></div>
-    <div class="tooltip-row">Total changes: <span>${node.data('changeCount')}</span></div>
-  `, edge => `
-    <div class="tooltip-title">${edge.data('source')} ↔ ${edge.data('target')}</div>
-    <div class="tooltip-row">Shared symbols: <span>${edge.data('sharedLabel')}</span></div>
-  `);
+    attachTooltip(cy,
+        node => node.data('isChange')
+            ? `<div class="tooltip-title">${node.data('label')}</div>
+         <div class="tooltip-row">Type: <span>${node.data('changeKind') === 'add' ? 'Addition' : node.data('changeKind') === 'rem' ? 'Removal' : 'Modified'}</span></div>`
+            : `<div class="tooltip-title">${node.data('label')}</div>
+         <div class="tooltip-row">Files: <span>${node.data('fileCount')}</span></div>
+         <div class="tooltip-row">Changed symbols: <span>${node.data('symbolCount')}</span></div>`,
+        edge => `<div class="tooltip-title">dependency</div>
+             <div class="tooltip-row">${edge.data('source')} → ${edge.data('target').replace('sym::', '')}</div>`
+    );
 
-    // Legend
     document.getElementById('graphLegend').innerHTML = `
-    <div class="legend-item">
-      <div class="legend-swatch" style="background:#c0392b"></div> Process (size = file count)
-    </div>
-    <div class="legend-item">
-      <div class="legend-line-swatch" style="background:#3a3630"></div> Shared symbol
-    </div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#c0392b"></div> Process (size = file count)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#1a3326;border:1.5px solid #4caf82;border-radius:2px;transform:rotate(45deg)"></div> Added symbol</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#331a1a;border:1.5px solid #e0705a;border-radius:2px;transform:rotate(45deg)"></div> Removed symbol</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#2a2010;border:1.5px solid #e8c97a;border-radius:2px;transform:rotate(45deg)"></div> Modified (add+remove)</div>
   `;
 }
 
-/* ── File graph ── */
+/* ── File graph ──
+   Nodes  = files (grouped by process via compound nodes) + change symbols
+   Edges  = file → symbol (if that symbol appears in the file's class methods)  */
 function renderFileGraph(container) {
     const entries = Object.entries(affectedProcessMap);
-    if (!entries.length) return;
+    if (!entries.length) { showGraphEmpty(container, 'No processes in response.'); return; }
+
+    const changed = allChangedSymbols();
+    const addSymbols = new Set(allChanges.filter(c => c.changeType === 'ADDITION').map(c => c.newParameter).filter(Boolean));
+    const remSymbols = new Set(allChanges.filter(c => c.changeType === 'REMOVAL').map(c => c.oldParameter).filter(Boolean));
 
     const nodes = [];
     const edges = [];
+    let eid = 0;
 
-    // Process compound nodes
+    // Process compound parent nodes
     entries.forEach(([proc, files], i) => {
         nodes.push({
             data: { id: `proc::${proc}`, label: proc, isProcess: true, color: procColor(i) }
         });
 
         files.forEach(f => {
-            const fname = f.filename || 'unknown';
-            const lang  = (f.language || '').toLowerCase();
-            const color = lang === 'java' ? '#c0602a' : '#a08020';
-            const changeCount = allChanges.filter(c =>
-                c.affectedCu && c.affectedCu.filename === fname
-            ).length;
+            const fname  = f.filename || 'unknown';
+            const lang   = (f.language || '').toLowerCase();
+            const fcolor = lang === 'java' ? '#8b3620' : '#7a600a';
+            const fileSymbols = extractFileSymbols(f);
+
+            // Count how many changed symbols this file touches
+            const hits = [...fileSymbols].filter(s => changed.has(s));
 
             nodes.push({
                 data: {
                     id: fname,
                     label: fname.replace(/\.(java|js)$/, ''),
                     parent: `proc::${proc}`,
-                    lang, color, process: proc,
-                    changeCount,
+                    lang, color: fcolor,
+                    process: proc,
+                    hitCount: hits.length,
+                    hitSymbols: hits.slice(0, 5).join(', ') || '—',
                 }
+            });
+
+            // File → changed symbol edges
+            hits.forEach(sym => {
+                // Add the symbol node if not already added
+                if (!nodes.find(n => n.data.id === `sym::${sym}`)) {
+                    const kind = addSymbols.has(sym) && remSymbols.has(sym) ? 'both'
+                        : addSymbols.has(sym) ? 'add' : 'rem';
+                    nodes.push({
+                        data: { id: `sym::${sym}`, label: sym, isChange: true, changeKind: kind }
+                    });
+                }
+                edges.push({ data: { id: `fe${eid++}`, source: fname, target: `sym::${sym}` } });
             });
         });
     });
 
-    // File-to-file edges via shared changed symbols
-    const fileSymbols = {};
-    nodes.filter(n => !n.data.isProcess).forEach(n => {
-        const fname = n.data.id;
-        fileSymbols[fname] = new Set(
-            allChanges
-                .filter(c => c.affectedCu && c.affectedCu.filename === fname)
-                .map(c => c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter)
-                .filter(Boolean)
-        );
-    });
-
-    const fileIds = Object.keys(fileSymbols);
-    let eid = 0;
-    for (let i = 0; i < fileIds.length; i++) {
-        for (let j = i + 1; j < fileIds.length; j++) {
-            const a = fileIds[i], b = fileIds[j];
-            const shared = [...fileSymbols[a]].filter(s => fileSymbols[b].has(s));
-            if (shared.length) {
-                edges.push({ data: {
-                        id: `fe${eid++}`, source: a, target: b,
-                        sharedLabel: shared.slice(0, 2).join(', '),
-                    }});
+    // If no file→symbol edges were created (no class/method data in response),
+    // fall back: connect every file in the process to every changed symbol
+    if (edges.length === 0) {
+        changed.forEach(sym => {
+            if (!nodes.find(n => n.data.id === `sym::${sym}`)) {
+                const kind = addSymbols.has(sym) && remSymbols.has(sym) ? 'both'
+                    : addSymbols.has(sym) ? 'add' : 'rem';
+                nodes.push({ data: { id: `sym::${sym}`, label: sym, isChange: true, changeKind: kind } });
             }
-        }
+        });
+        entries.forEach(([, files]) => {
+            files.forEach(f => {
+                const fname = f.filename || 'unknown';
+                changed.forEach(sym => {
+                    edges.push({ data: { id: `fe${eid++}`, source: fname, target: `sym::${sym}` } });
+                });
+            });
+        });
     }
 
     cy = cytoscape({
         container,
         elements: { nodes, edges },
         style: [
+            // Process compound
             {
                 selector: 'node[isProcess]',
                 style: {
-                    'background-color': 'data(color)',
-                    'background-opacity': 0.07,
-                    'border-width': 1.5,
-                    'border-color': 'data(color)',
-                    'border-opacity': 0.5,
-                    'label': 'data(label)',
-                    'color': 'data(color)',
-                    'font-size': '11px',
-                    'font-family': 'Martian Mono, monospace',
-                    'font-weight': '700',
-                    'text-valign': 'top',
-                    'text-halign': 'center',
-                    'text-margin-y': -10,
-                    'shape': 'roundrectangle',
-                    'padding': '24px',
+                    'background-color': 'data(color)', 'background-opacity': 0.06,
+                    'border-width': 1.5, 'border-color': 'data(color)', 'border-opacity': 0.5,
+                    'label': 'data(label)', 'color': 'data(color)',
+                    'font-size': '11px', 'font-family': 'Martian Mono, monospace', 'font-weight': '700',
+                    'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -10,
+                    'shape': 'roundrectangle', 'padding': '28px',
                 }
             },
+            // File nodes
             {
-                selector: 'node:not([isProcess])',
+                selector: 'node:not([isProcess]):not([isChange])',
                 style: {
-                    'background-color': 'data(color)',
-                    'background-opacity': 0.9,
-                    'label': 'data(label)',
-                    'color': '#f0ece4',
-                    'font-size': '9px',
-                    'font-family': 'Martian Mono, monospace',
-                    'font-weight': '500',
-                    'text-valign': 'center',
-                    'text-halign': 'center',
-                    'text-wrap': 'wrap',
-                    'text-max-width': '80px',
-                    'width': 80, 'height': 32,
-                    'shape': 'roundrectangle',
+                    'background-color': 'data(color)', 'background-opacity': 0.9,
+                    'label': 'data(label)', 'color': '#f0ece4',
+                    'font-size': '9px', 'font-family': 'Martian Mono, monospace', 'font-weight': '500',
+                    'text-valign': 'center', 'text-halign': 'center',
+                    'text-wrap': 'wrap', 'text-max-width': '80px',
+                    'width': 88, 'height': 34, 'shape': 'roundrectangle',
+                    'border-width': 0,
+                }
+            },
+            // Change symbol nodes
+            {
+                selector: 'node[isChange][changeKind="add"]',
+                style: {
+                    'background-color': '#1a3326', 'border-width': 1.5, 'border-color': '#4caf82',
+                    'label': 'data(label)', 'color': '#4caf82',
+                    'font-size': '9px', 'font-family': 'Martian Mono, monospace',
+                    'text-valign': 'center', 'text-halign': 'center',
+                    'text-wrap': 'wrap', 'text-max-width': '80px',
+                    'width': 22, 'height': 22, 'shape': 'diamond',
                 }
             },
             {
-                selector: 'node:not([isProcess]):selected',
-                style: { 'border-width': 2, 'border-color': 'rgba(255,255,255,0.5)' }
+                selector: 'node[isChange][changeKind="rem"]',
+                style: {
+                    'background-color': '#331a1a', 'border-width': 1.5, 'border-color': '#e0705a',
+                    'label': 'data(label)', 'color': '#e0705a',
+                    'font-size': '9px', 'font-family': 'Martian Mono, monospace',
+                    'text-valign': 'center', 'text-halign': 'center',
+                    'text-wrap': 'wrap', 'text-max-width': '80px',
+                    'width': 22, 'height': 22, 'shape': 'diamond',
+                }
+            },
+            {
+                selector: 'node[isChange][changeKind="both"]',
+                style: {
+                    'background-color': '#2a2010', 'border-width': 1.5, 'border-color': '#e8c97a',
+                    'label': 'data(label)', 'color': '#e8c97a',
+                    'font-size': '9px', 'font-family': 'Martian Mono, monospace',
+                    'text-valign': 'center', 'text-halign': 'center',
+                    'text-wrap': 'wrap', 'text-max-width': '80px',
+                    'width': 22, 'height': 22, 'shape': 'diamond',
+                }
             },
             {
                 selector: 'edge',
                 style: {
                     'width': 1.5, 'line-color': '#4a4540',
-                    'line-style': 'dashed', 'line-dash-pattern': [5, 3],
-                    'target-arrow-shape': 'none', 'curve-style': 'bezier',
-                    'opacity': 0.6,
+                    'target-arrow-color': '#4a4540', 'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier', 'opacity': 0.65,
                 }
             },
-            {
-                selector: 'edge:hover',
-                style: { 'line-color': '#786a5a', 'opacity': 1, 'width': 2 }
-            }
+            { selector: 'edge:hover', style: { 'line-color': '#a09080', 'target-arrow-color': '#a09080', 'opacity': 1, 'width': 2 } },
+            { selector: 'node:selected', style: { 'border-width': 2, 'border-color': 'rgba(255,255,255,0.6)' } },
         ],
         layout: {
             name: 'cose',
-            animate: true, animationDuration: 600,
-            nodeRepulsion: 8000, idealEdgeLength: 120,
-            nodeOverlap: 10, padding: 50,
-            componentSpacing: 80,
+            animate: true, animationDuration: 700,
+            nodeRepulsion: 8000, idealEdgeLength: 130,
+            nodeOverlap: 10, padding: 50, componentSpacing: 80,
         },
         userZoomingEnabled: true, userPanningEnabled: true,
     });
 
-    attachTooltip(cy, node => `
-    <div class="tooltip-title">${node.data('label')}.${node.data('lang')}</div>
-    <div class="tooltip-row">Process: <span>${node.data('process')}</span></div>
-    <div class="tooltip-row">Changes: <span>${node.data('changeCount')}</span></div>
-  `, edge => `
-    <div class="tooltip-title">${edge.data('source').split('/').pop()} ↔ ${edge.data('target').split('/').pop()}</div>
-    <div class="tooltip-row">Shared: <span>${edge.data('sharedLabel')}</span></div>
-  `);
+    attachTooltip(cy,
+        node => node.data('isChange')
+            ? `<div class="tooltip-title">${node.data('label')}</div>
+         <div class="tooltip-row">Type: <span>${node.data('changeKind') === 'add' ? 'Addition' : node.data('changeKind') === 'rem' ? 'Removal' : 'Modified'}</span></div>`
+            : `<div class="tooltip-title">${node.data('label')}</div>
+         <div class="tooltip-row">Process: <span>${node.data('process')}</span></div>
+         <div class="tooltip-row">Language: <span>${(node.data('lang') || '').toUpperCase()}</span></div>
+         <div class="tooltip-row">Symbols touched: <span>${node.data('hitCount')}</span></div>`,
+        edge => `<div class="tooltip-title">touches</div>
+             <div class="tooltip-row">${edge.data('source').replace(/\.(java|js)$/, '')} → ${edge.data('target').replace('sym::', '')}</div>`
+    );
 
     document.getElementById('graphLegend').innerHTML = `
-    <div class="legend-item"><div class="legend-swatch" style="background:#c0602a"></div> Java file</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#a08020"></div> JS file</div>
-    <div class="legend-item"><div class="legend-swatch square" style="background:#c0392b;opacity:0.3;border:1.5px solid #c0392b"></div> Process group</div>
-    <div class="legend-item"><div class="legend-line-swatch" style="background:#4a4540;border-top:1.5px dashed #4a4540"></div> Shared symbol</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#8b3620"></div> Java file</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#7a600a"></div> JS file</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#1a3326;border:1.5px solid #4caf82;border-radius:2px;transform:rotate(45deg)"></div> Added symbol</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#331a1a;border:1.5px solid #e0705a;border-radius:2px;transform:rotate(45deg)"></div> Removed symbol</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#2a2010;border:1.5px solid #e8c97a;border-radius:2px;transform:rotate(45deg)"></div> Modified (add+rem)</div>
   `;
+}
+
+function showGraphEmpty(container, msg) {
+    container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#786a5a;font-family:Martian Mono,monospace;font-size:12px;">${msg}</div>`;
 }
 
 /* ── Tooltip helper ── */
