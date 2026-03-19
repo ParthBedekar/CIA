@@ -44,6 +44,7 @@ async function runAnalysis() {
 
         const data = await res.json();
         renderResults(data);
+        console.log(data);
         setStatus('done', 'complete');
     } catch (e) {
         showError(e.message || 'Analysis failed. Check the server.');

@@ -1,5 +1,6 @@
 package org.app.cia.ingestion;
 
+import org.apache.commons.io.FileUtils;
 import org.app.cia.ingestion.Exceptions.GitOperationException;
 
 import java.io.BufferedReader;
@@ -24,9 +25,10 @@ public class GitManager {
      * Uses `git branch --show-current` which works on Git 2.22+.
      */
     private String getCurrentBranch(Path repoDirectory) {
-        ProcessBuilder pb = new ProcessBuilder("git", "branch", "--show-current");
-        pb.directory(repoDirectory.toFile());
+        // Strategy 1: git branch --show-current (Git 2.22+)
         try {
+            ProcessBuilder pb = new ProcessBuilder("git", "branch", "--show-current");
+            pb.directory(repoDirectory.toFile());
             Process process = pb.start();
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String branch = reader.readLine();
@@ -34,25 +36,57 @@ public class GitManager {
             if (branch != null && !branch.isBlank()) {
                 return branch.trim();
             }
-        } catch (Exception e) {
-            // fall through to fallback
-        }
+        } catch (Exception e) { /* fall through */ }
 
-        // Fallback: parse `git branch` output for the line starting with '*'
-        ProcessBuilder fallback = new ProcessBuilder("git", "branch");
-        fallback.directory(repoDirectory.toFile());
+        // Strategy 2: parse `git branch` for the '*' line
+        // Note: detached HEAD shows as "* (HEAD detached at <hash>)" — skip those
         try {
-            Process process = fallback.start();
+            ProcessBuilder pb = new ProcessBuilder("git", "branch");
+            pb.directory(repoDirectory.toFile());
+            Process process = pb.start();
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.startsWith("*")) {
-                    return line.substring(1).trim();
+                    String candidate = line.substring(1).trim();
+                    if (!candidate.startsWith("(HEAD detached")) {
+                        process.waitFor();
+                        return candidate;
+                    }
                 }
             }
             process.waitFor();
-        } catch (Exception e) {
-            throw new GitOperationException("Failed to determine current branch for: " + repoUrl);
+        } catch (Exception e) { /* fall through */ }
+
+        // Strategy 3: ask git which remote branches exist and pick the default
+        // (handles freshly-cloned repos that land in detached HEAD)
+        try {
+            ProcessBuilder pb = new ProcessBuilder("git", "remote", "show", "origin");
+            pb.directory(repoDirectory.toFile());
+            Process process = pb.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.startsWith("HEAD branch:")) {
+                    String branch = line.replace("HEAD branch:", "").trim();
+                    process.waitFor();
+                    return branch;
+                }
+            }
+            process.waitFor();
+        } catch (Exception e) { /* fall through */ }
+
+        // Strategy 4: last resort — try common branch names in order
+        for (String candidate : List.of("main", "master", "develop", "dev")) {
+            ProcessBuilder pb = new ProcessBuilder("git", "checkout", candidate);
+            pb.directory(repoDirectory.toFile());
+            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+            try {
+                int exit = pb.start().waitFor();
+                if (exit == 0) return candidate;
+            } catch (Exception e) { /* try next */ }
         }
 
         throw new GitOperationException("Could not detect current branch for: " + repoUrl);
@@ -71,17 +105,18 @@ public class GitManager {
     }
 
     public void pullRepo(Path clonedPath) {
-        String branch = getCurrentBranch(clonedPath);
+        // Step 1: fetch so local refs are up to date — works even in detached HEAD
+        runSilently(clonedPath, "git", "fetch", "origin");
 
-        ProcessBuilder resetBranch = new ProcessBuilder("git", "checkout", branch);
-        resetBranch.directory(clonedPath.toFile());
-        resetBranch.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        resetBranch.redirectError(ProcessBuilder.Redirect.DISCARD);
-        try {
-            resetBranch.start().waitFor();
-        } catch (Exception e) { /* ignore */ }
+        // Step 2: resolve the remote default branch without relying on local HEAD state
+        String branch = getRemoteDefaultBranch(clonedPath);
 
-        ProcessBuilder puller = new ProcessBuilder("git", "pull");
+        // Step 3: force checkout onto that branch, re-attaching HEAD if currently detached.
+        // -B creates or resets the local branch to track origin/<branch>.
+        runSilently(clonedPath, "git", "checkout", "-B", branch, "origin/" + branch);
+
+        // Step 4: pull (will be a fast-forward since we're already at origin/<branch>)
+        ProcessBuilder puller = new ProcessBuilder("git", "pull", "origin", branch);
         puller.directory(clonedPath.toFile());
         puller.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         puller.redirectError(ProcessBuilder.Redirect.DISCARD);
@@ -100,6 +135,60 @@ public class GitManager {
         if (exitCode != 0) {
             throw new GitOperationException("Failed to pull repository: " + repoUrl);
         }
+    }
+
+    /**
+     * Reads the remote default branch from origin's symbolic ref — works regardless
+     * of local HEAD state (detached or not). Falls back to getCurrentBranch.
+     */
+    private String getRemoteDefaultBranch(Path repoDirectory) {
+        // First: git symbolic-ref refs/remotes/origin/HEAD (set automatically on clone)
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD");
+            pb.directory(repoDirectory.toFile());
+            Process process = pb.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line = reader.readLine();
+            process.waitFor();
+            // Returns "origin/main" — strip prefix
+            if (line != null && !line.isBlank()) {
+                return line.trim().replaceFirst("^origin/", "");
+            }
+        } catch (Exception e) { /* fall through */ }
+
+        // Second: set the remote HEAD ourselves then retry (handles Railway containers
+        // where the symbolic-ref wasn't written during clone)
+        try {
+            runSilently(repoDirectory, "git", "remote", "set-head", "origin", "--auto");
+            ProcessBuilder pb = new ProcessBuilder(
+                    "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD");
+            pb.directory(repoDirectory.toFile());
+            Process process = pb.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line = reader.readLine();
+            process.waitFor();
+            if (line != null && !line.isBlank()) {
+                return line.trim().replaceFirst("^origin/", "");
+            }
+        } catch (Exception e) { /* fall through */ }
+
+        // Last resort: fall back to local branch detection
+        return getCurrentBranch(repoDirectory);
+    }
+
+    /**
+     * Runs a git command silently, discarding all output. Failures are ignored —
+     * only use this for preparatory steps where partial success is acceptable.
+     */
+    private void runSilently(Path directory, String... command) {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(directory.toFile());
+        pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+        try {
+            pb.start().waitFor();
+        } catch (Exception e) { /* intentionally silent */ }
     }
 
     public List<String> getChangedFiles(Path clonedPath, String hash1, String hash2) {
