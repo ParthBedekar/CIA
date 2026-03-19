@@ -1,0 +1,159 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Martian+Mono:wght@300;400;500;600&display=swap');
+
+/* ─────────────────────────────────────────
+   Tokens
+───────────────────────────────────────── */
+:root {
+    --paper:     #f4f1eb;
+    --paper2:    #ede9e1;
+    --ink:       #1a1814;
+    --ink2:      #3d3a35;
+    --ink3:      #6b6760;
+    --rule:      #d4cfc6;
+    --rule2:     #c4bfb6;
+    --red:       #c0392b;
+    --red-light: #f8ece9;
+    --green:     #2d6a4f;
+    --green-light: #eaf3ee;
+    --amber:     #b7580a;
+    --amber-light: #fef3e8;
+    --blue:      #2c4a7c;
+    --blue-light: #eaeff8;
+
+    --font-display: 'Syne', sans-serif;
+    --font-mono:    'Martian Mono', monospace;
+    --font-body:    'Syne', sans-serif;
+
+    --radius:  4px;
+    --radius2: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Noise texture overlay */
+body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999;
+    opacity: 0.5;
+}
+
+/* ─────────────────────────────────────────
+   Shared nav
+───────────────────────────────────────── */
+.site-nav {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    padding: 0 40px;
+    display: flex; align-items: center; height: 52px;
+}
+
+.nav-brand {
+    display: flex; align-items: center; gap: 10px;
+    text-decoration: none; color: var(--ink);
+}
+
+.nav-brand-mark {
+    width: 26px; height: 26px;
+    background: var(--ink);
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    color: var(--paper); flex-shrink: 0;
+}
+
+.nav-brand-name {
+    font-size: 15px; font-weight: 700; letter-spacing: -0.3px;
+}
+
+.nav-links {
+    display: flex; align-items: center; gap: 6px; margin-left: auto;
+}
+
+.nav-link {
+    text-decoration: none; color: var(--ink3);
+    font-family: var(--font-mono); font-size: 11px;
+    padding: 5px 12px; border-radius: var(--radius);
+    transition: color 0.15s, background 0.15s;
+}
+
+.nav-link:hover { color: var(--ink); background: var(--paper2); }
+.nav-link.active { color: var(--ink); background: var(--paper2); }
+
+.nav-cta {
+    text-decoration: none; color: var(--paper);
+    background: var(--ink); font-family: var(--font-mono);
+    font-size: 11px; padding: 6px 14px;
+    border-radius: var(--radius); transition: opacity 0.15s;
+    margin-left: 8px;
+}
+.nav-cta:hover { opacity: 0.8; }
+
+/* ─────────────────────────────────────────
+   Utility
+───────────────────────────────────────── */
+.mono { font-family: var(--font-mono); }
+
+.tag {
+    display: inline-block;
+    font-family: var(--font-mono); font-size: 10px;
+    padding: 2px 7px; border-radius: 2px;
+    border: 1px solid var(--rule2); color: var(--ink3);
+    background: var(--paper2);
+}
+
+.tag.green { background: var(--green-light); border-color: #a8d5be; color: var(--green); }
+.tag.red   { background: var(--red-light);   border-color: #e8b4ae; color: var(--red); }
+.tag.amber { background: var(--amber-light);  border-color: #f0c898; color: var(--amber); }
+.tag.blue  { background: var(--blue-light);   border-color: #b0c4e0; color: var(--blue); }
+
+/* ─────────────────────────────────────────
+   Buttons
+───────────────────────────────────────── */
+.btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+    padding: 9px 18px; border-radius: var(--radius);
+    cursor: pointer; text-decoration: none; transition: all 0.15s;
+    border: 1px solid transparent;
+}
+
+.btn-primary {
+    background: var(--ink); color: var(--paper);
+    border-color: var(--ink);
+}
+.btn-primary:hover { opacity: 0.82; }
+
+.btn-ghost {
+    background: transparent; color: var(--ink);
+    border-color: var(--rule2);
+}
+.btn-ghost:hover { background: var(--paper2); border-color: var(--ink3); }
+
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-spinner {
+    width: 12px; height: 12px;
+    border: 1.5px solid rgba(0,0,0,0.2);
+    border-top-color: var(--paper);
+    border-radius: 50%;
+    animation: spin 0.65s linear infinite;
+    display: none;
+}
+.btn-loading .btn-spinner { display: block; }
+.btn-loading .btn-label   { display: none; }
+
+@keyframes spin { to { transform: rotate(360deg); } }

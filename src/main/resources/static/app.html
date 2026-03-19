@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Analyzer — Rippler</title>
+    <link rel="stylesheet" href="styles.css"/>
+    <link rel="stylesheet" href="app.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js" defer></script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+
+<nav class="site-nav">
+    <a href="index.html" class="nav-brand">
+        <div class="nav-brand-mark">R</div>
+        <span class="nav-brand-name">Rippler</span>
+    </a>
+    <div class="nav-links">
+        <a href="index.html" class="nav-link">← Home</a>
+        <div class="status-indicator" id="statusIndicator">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="mono" id="statusLabel" style="font-size:10px;color:var(--ink3);">idle</span>
+        </div>
+    </div>
+</nav>
+
+<div class="app-layout">
+
+    <!-- ── Sidebar ── -->
+    <aside class="sidebar">
+
+        <div class="sidebar-section">
+            <p class="sidebar-label mono">Repository</p>
+            <div class="input-group">
+                <input
+                        type="text"
+                        id="repoUrl"
+                        class="repo-input mono"
+                        placeholder="https://github.com/user/repo.git"
+                        autocomplete="off"
+                        spellcheck="false"
+                />
+            </div>
+            <button class="btn btn-primary run-btn" id="runBtn" onclick="runAnalysis()">
+                <div class="btn-spinner"></div>
+                <span class="btn-label">Run analysis</span>
+            </button>
+            <div class="error-msg" id="errorMsg"></div>
+        </div>
+
+        <div class="sidebar-section" id="summarySection" style="display:none;">
+            <p class="sidebar-label mono">Last run</p>
+            <div class="summary-table">
+                <div class="summary-row">
+                    <span>Additions</span>
+                    <span class="tag green" id="sumAdd">—</span>
+                </div>
+                <div class="summary-row">
+                    <span>Removals</span>
+                    <span class="tag red" id="sumRem">—</span>
+                </div>
+                <div class="summary-row">
+                    <span>Processes hit</span>
+                    <span class="tag amber" id="sumProc">—</span>
+                </div>
+                <div class="summary-row">
+                    <span>Total changes</span>
+                    <span class="mono" id="sumTotal" style="font-size:12px;font-weight:600;">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <p class="sidebar-label mono">Pipeline</p>
+            <ol class="pipeline-steps">
+                <li>Clone &amp; diff last 2 commits</li>
+                <li>Parse AST (Java &amp; JS)</li>
+                <li>Build Neo4j graph</li>
+                <li>Trace impact — reverse DFS</li>
+                <li>Group by process (folder)</li>
+            </ol>
+        </div>
+
+        <div class="sidebar-section">
+            <p class="sidebar-label mono">Requirements</p>
+            <ul class="req-mini">
+                <li>URL must end in <code>.git</code></li>
+                <li>Public repository</li>
+                <li>At least 2 commits</li>
+                <li>.java or .js source files</li>
+                <li>Each folder = one process</li>
+            </ul>
+        </div>
+
+    </aside>
+
+    <!-- ── Main content ── -->
+    <main class="main-content">
+
+        <!-- Empty state -->
+        <div class="empty-state" id="emptyState">
+            <div class="empty-inner">
+                <div class="empty-icon mono">⬡</div>
+                <p class="empty-title">No analysis yet</p>
+                <p class="empty-hint">Enter a repository URL and run an analysis to see results here.</p>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="results" id="results" style="display:none;">
+
+            <!-- Stat cards -->
+            <div class="stat-cards">
+                <div class="stat-card add-card">
+                    <span class="stat-card-label mono">Additions</span>
+                    <span class="stat-card-num" id="statAdd">0</span>
+                    <span class="stat-card-sub mono">methods · classes · imports</span>
+                </div>
+                <div class="stat-card rem-card">
+                    <span class="stat-card-label mono">Removals</span>
+                    <span class="stat-card-num" id="statRem">0</span>
+                    <span class="stat-card-sub mono">methods · classes · imports</span>
+                </div>
+                <div class="stat-card proc-card">
+                    <span class="stat-card-label mono">Processes</span>
+                    <span class="stat-card-num" id="statProc">0</span>
+                    <span class="stat-card-sub mono">affected folders</span>
+                </div>
+            </div>
+
+            <!-- View toggle -->
+            <div class="view-tabs">
+                <button class="view-tab active" data-view="changes" onclick="switchView('changes', this)">Changes</button>
+                <button class="view-tab" data-view="processes" onclick="switchView('processes', this)">Processes</button>
+                <button class="view-tab" data-view="graph" onclick="switchView('graph', this)">Graph</button>
+            </div>
+
+            <!-- Changes view -->
+            <div class="view-panel" id="view-changes">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <button class="filter-chip active" data-filter="all" onclick="setFilter(this)">All</button>
+                        <button class="filter-chip" data-filter="ADDITION" onclick="setFilter(this)">+ Additions</button>
+                        <button class="filter-chip" data-filter="REMOVAL" onclick="setFilter(this)">− Removals</button>
+                        <button class="filter-chip" data-filter="method" onclick="setFilter(this)">Methods</button>
+                        <button class="filter-chip" data-filter="import" onclick="setFilter(this)">Imports</button>
+                        <button class="filter-chip" data-filter="class" onclick="setFilter(this)">Classes</button>
+                    </div>
+                    <input class="search-box mono" id="searchBox" placeholder="Filter…" oninput="applyFilters()"/>
+                </div>
+                <div class="changes-table" id="changesTable"></div>
+            </div>
+
+            <!-- Processes view -->
+            <div class="view-panel" id="view-processes" style="display:none;">
+                <div class="processes-grid" id="processesGrid"></div>
+            </div>
+
+            <!-- Graph view -->
+            <div class="view-panel graph-panel" id="view-graph" style="display:none;">
+                <div class="graph-toolbar">
+                    <div class="graph-type-toggle">
+                        <button class="graph-type-btn active" id="graphBtnProcess" onclick="switchGraph('process', this)">Process graph</button>
+                        <button class="graph-type-btn" id="graphBtnFile" onclick="switchGraph('file', this)">File graph</button>
+                    </div>
+                    <div class="graph-controls">
+                        <button class="graph-ctrl mono" onclick="fitGraph()" title="Fit to screen">⊡</button>
+                        <button class="graph-ctrl mono" onclick="zoomIn()" title="Zoom in">+</button>
+                        <button class="graph-ctrl mono" onclick="zoomOut()" title="Zoom out">−</button>
+                    </div>
+                </div>
+                <div class="graph-container" id="graphContainer"></div>
+                <div class="graph-legend" id="graphLegend"></div>
+                <div class="graph-tooltip" id="graphTooltip"></div>
+            </div>
+
+        </div>
+    </main>
+</div>
+
+</body>
+</html>
