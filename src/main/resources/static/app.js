@@ -1,11 +1,11 @@
 /* ─────────────────────────────────────────
    State
 ───────────────────────────────────────── */
-let allChanges      = [];
+let allChanges         = [];
 let affectedProcessMap = {};
-let activeFilter    = 'all';
-let activeGraph     = 'process';
-let cy              = null;
+let activeFilter       = 'all';
+let activeGraph        = 'file';
+let cy                 = null;
 
 const API = 'https://cia-production-3b2a.up.railway.app/api/analyze';
 
@@ -13,38 +13,30 @@ const API = 'https://cia-production-3b2a.up.railway.app/api/analyze';
    Analysis
 ───────────────────────────────────────── */
 async function runAnalysis() {
-    const url  = document.getElementById('repoUrl').value.trim();
-    const btn  = document.getElementById('runBtn');
-    const err  = document.getElementById('errorMsg');
+    const url = document.getElementById('repoUrl').value.trim();
+    const btn = document.getElementById('runBtn');
+    const err = document.getElementById('errorMsg');
 
     err.classList.remove('visible');
 
-    if (!url) {
-        showError('Please enter a repository URL.'); return;
-    }
-    if (!url.endsWith('.git')) {
-        showError('URL must end in .git\ne.g. https://github.com/user/repo.git'); return;
-    }
+    if (!url)                  { showError('Please enter a repository URL.'); return; }
+    if (!url.endsWith('.git')) { showError('URL must end in .git\ne.g. https://github.com/user/repo.git'); return; }
 
     btn.classList.add('btn-loading');
     btn.disabled = true;
     setStatus('running', 'analyzing…');
 
     try {
-        const res = await fetch(API, {
+        const res     = await fetch(API, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url }),
         });
-
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || `HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
+        const rawText = await res.text();
+        console.log('STATUS:', res.status, '| RAW:', rawText);
+        if (!res.ok) throw new Error(rawText || `HTTP ${res.status}`);
+        const data = JSON.parse(rawText);
         renderResults(data);
-        console.log(data);
         setStatus('done', 'complete');
     } catch (e) {
         showError(e.message || 'Analysis failed. Check the server.');
@@ -66,28 +58,22 @@ function renderResults(data) {
     const rem  = allChanges.filter(c => c.changeType === 'REMOVAL').length;
     const proc = Object.keys(affectedProcessMap).length;
 
-    // Stat cards
     counter('statAdd',  add);
     counter('statRem',  rem);
     counter('statProc', proc);
 
-    // Sidebar summary
     document.getElementById('sumAdd').textContent   = '+' + add;
     document.getElementById('sumRem').textContent   = '−' + rem;
     document.getElementById('sumProc').textContent  = proc;
     document.getElementById('sumTotal').textContent = allChanges.length;
     document.getElementById('summarySection').style.display = 'block';
 
-    // Render all panels
     renderChangesTable(allChanges);
     renderProcesses(affectedProcessMap);
-    buildGraph();     // pre-build both graphs
 
-    // Show results
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('results').style.display    = 'block';
 
-    // Default to changes view
     switchView('changes', document.querySelector('.view-tab[data-view="changes"]'));
 }
 
@@ -104,23 +90,23 @@ function renderChangesTable(changes) {
     }
 
     changes.forEach((c, i) => {
-        const isAdd = c.changeType === 'ADDITION';
-        const param = isAdd ? (c.newParameter || '') : (c.oldParameter || '');
-        const cat   = guessCategory(param);
-        const fname = c.affectedCu ? (c.affectedCu.filename || '') : '';
+        const isAdd  = c.changeType === 'ADDITION';
+        const param  = isAdd ? (c.newParameter || '') : (c.oldParameter || '');
+        const cat    = guessCategory(param);
+        const fname  = c.affectedCu ? (c.affectedCu.filename || '') : '';
 
         const row = document.createElement('div');
-        row.className  = 'change-row';
-        row.dataset.type     = c.changeType;
-        row.dataset.category = cat;
-        row.dataset.param    = param.toLowerCase();
+        row.className            = 'change-row';
+        row.dataset.type         = c.changeType;
+        row.dataset.category     = cat;
+        row.dataset.param        = param.toLowerCase();
         row.style.animationDelay = Math.min(i * 10, 250) + 'ms';
 
         row.innerHTML = `
       <span class="change-sign ${isAdd ? 'add' : 'rem'}">${isAdd ? '+' : '−'}</span>
       <span class="change-cat">${cat}</span>
       <span class="change-param" title="${esc(param)}">${esc(param)}</span>
-      <span class="change-file" title="${esc(fname)}">${esc(fname)}</span>
+      <span class="change-file"  title="${esc(fname)}">${esc(fname)}</span>
     `;
         table.appendChild(row);
     });
@@ -140,30 +126,25 @@ function renderProcesses(pm) {
     }
 
     entries.forEach(([proc, files], i) => {
-        // Count additions/removals per file
-        const fileChangeCounts = {};
-        files.forEach(f => {
-            const fname = f.filename || 'unknown';
-            fileChangeCounts[fname] = allChanges.filter(c =>
-                c.affectedCu && c.affectedCu.filename === fname
-            ).length;
-        });
-
         const card = document.createElement('div');
-        card.className = 'process-card';
+        card.className            = 'process-card';
         card.style.animationDelay = i * 40 + 'ms';
 
         const filesHtml = files.map(f => {
-            const fname = f.filename || 'unknown';
-            const lang  = (f.language || '').toLowerCase();
-            const count = fileChangeCounts[fname] || 0;
+            const fname      = f.filename || 'unknown';
+            const lang       = (f.language || '').toLowerCase();
+            const fileMethods = new Set(f.methods || []);
+            const hits = allChanges.filter(c => {
+                const sym = c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter;
+                return sym && fileMethods.has(sym);
+            }).length;
+
             return `
         <div class="process-file-row">
           <span class="file-lang-badge ${lang}">${lang.toUpperCase()}</span>
           <span class="file-name">${esc(fname)}</span>
-          <span class="file-changes">${count} change${count !== 1 ? 's' : ''}</span>
-        </div>
-      `;
+          <span class="file-changes">${hits} hit${hits !== 1 ? 's' : ''}</span>
+        </div>`;
         }).join('');
 
         card.innerHTML = `
@@ -171,458 +152,277 @@ function renderProcesses(pm) {
         <span class="process-card-name">${esc(proc)}</span>
         <span class="tag">${files.length} file${files.length !== 1 ? 's' : ''}</span>
       </div>
-      <div class="process-card-body">${filesHtml}</div>
-    `;
+      <div class="process-card-body">${filesHtml}</div>`;
 
         grid.appendChild(card);
     });
 }
 
 /* ─────────────────────────────────────────
-   Graph (Cytoscape)
-
-   Data reality from the API:
-   - rawChanges have NO affectedCu — changes are not linked to files
-   - affectedProcessMap[proc] = array of CodeUnit (file objects with .classes[])
-   - Each CodeUnit has: filename, language, classes[] → each class has methods[]
-   - We derive file↔file edges by finding method names that appear in BOTH
-     a rawChange AND two different files' class method lists
-   - We derive file↔change edges directly (change symbol matches a method in file)
+   Graph
+   3-tier: process (circle) → file (rect) → symbol (diamond)
+   Edges come from real data: file.methods[] intersected with rawChanges symbols
 ───────────────────────────────────────── */
-
 const PROC_PALETTE = [
-    '#c0392b', '#2d6a4f', '#b7580a', '#2c4a7c',
-    '#7b3f6e', '#4a6741', '#8c4a2f', '#1a5c6b',
+    '#9b3a2a','#2d6a4f','#7a580a','#2c4a7c',
+    '#6b3f7e','#3a6741','#7c402f','#1a5c6b',
 ];
-function procColor(i) { return PROC_PALETTE[i % PROC_PALETTE.length]; }
-
-function buildGraph() {
-    // no-op — rendered on tab open
-}
+const procColor = i => PROC_PALETTE[i % PROC_PALETTE.length];
 
 function renderGraph() {
     const container = document.getElementById('graphContainer');
     if (cy) { cy.destroy(); cy = null; }
+    container.innerHTML = '';
     if (activeGraph === 'process') renderProcessGraph(container);
-    else renderFileGraph(container);
+    else                           renderFileGraph(container);
 }
 
-/* ── Derive which symbols (method names) belong to each file ──
-   CodeUnit.classes[] → each class has methods[] (array of strings or objects).
-   We extract all method names from a file's class list.                        */
-function extractFileSymbols(codeUnit) {
-    const symbols = new Set();
-    (codeUnit.classes || []).forEach(cls => {
-        (cls.methods || []).forEach(m => {
-            // method might be a string or { name: '...' }
-            const name = typeof m === 'string' ? m : (m.name || '');
-            if (name) symbols.add(name);
-        });
-        // also grab the class name itself
-        const cname = typeof cls === 'string' ? cls : (cls.name || cls.className || '');
-        if (cname) symbols.add(cname);
-    });
-    return symbols;
-}
-
-/* ── All changed symbol names from rawChanges ── */
-function allChangedSymbols() {
-    return new Set(
-        allChanges
-            .map(c => c.changeType === 'ADDITION' ? c.newParameter : c.oldParameter)
-            .filter(Boolean)
-    );
-}
-
-/* ── Process graph ──
-   Nodes  = processes
-   Edges  = two processes share ≥1 changed symbol that appears in both their files */
+/* ── Process graph: process → symbol ── */
 function renderProcessGraph(container) {
     const entries = Object.entries(affectedProcessMap);
-    if (!entries.length) { showGraphEmpty(container, 'No processes in response.'); return; }
+    if (!entries.length) { showGraphEmpty(container); return; }
 
-    const changed = allChangedSymbols();
+    const { addSet, remSet, allSyms } = symbolSets();
 
-    // Build per-process symbol set (intersection of changed symbols ∩ file symbols)
-    const procSymbols = {};
+    // per-process: which changed symbols appear in any file's methods[]?
+    const procSyms = {};
     entries.forEach(([proc, files]) => {
-        procSymbols[proc] = new Set();
-        files.forEach(f => {
-            extractFileSymbols(f).forEach(s => {
-                if (changed.has(s)) procSymbols[proc].add(s);
-            });
-        });
-        // If no class/method data, fall back: every changed symbol touches this process
-        if (procSymbols[proc].size === 0) {
-            changed.forEach(s => procSymbols[proc].add(s));
-        }
+        procSyms[proc] = new Set();
+        files.forEach(f => (f.methods || []).forEach(m => { if (allSyms.has(m)) procSyms[proc].add(m); }));
+        if (procSyms[proc].size === 0) allSyms.forEach(s => procSyms[proc].add(s)); // fallback
     });
-
-    const nodes = entries.map(([proc, files], i) => ({
-        data: {
-            id: proc, label: proc,
-            fileCount: files.length,
-            symbolCount: procSymbols[proc].size,
-            color: procColor(i),
-        }
-    }));
-
-    // Also add change nodes — each unique changed symbol is a node
-    const changeNodes = [];
-    const addSymbols  = new Set(allChanges.filter(c => c.changeType === 'ADDITION').map(c => c.newParameter).filter(Boolean));
-    const remSymbols  = new Set(allChanges.filter(c => c.changeType === 'REMOVAL').map(c => c.oldParameter).filter(Boolean));
-
-    changed.forEach(sym => {
-        changeNodes.push({
-            data: {
-                id: `sym::${sym}`,
-                label: sym,
-                isChange: true,
-                changeKind: addSymbols.has(sym) && remSymbols.has(sym) ? 'both'
-                    : addSymbols.has(sym) ? 'add' : 'rem',
-            }
-        });
-    });
-
-    // Edges: process → symbol (if that symbol touches the process)
-    const edges = [];
-    let eid = 0;
-    entries.forEach(([proc]) => {
-        procSymbols[proc].forEach(sym => {
-            edges.push({ data: {
-                    id: `e${eid++}`, source: proc, target: `sym::${sym}`,
-                }});
-        });
-    });
-
-    cy = cytoscape({
-        container,
-        elements: { nodes: [...nodes, ...changeNodes], edges },
-        style: [
-            // Process nodes
-            {
-                selector: 'node[!isChange]',
-                style: {
-                    'background-color': 'data(color)',
-                    'background-opacity': 0.85,
-                    'label': 'data(label)',
-                    'color': '#f0ece4',
-                    'font-size': '12px',
-                    'font-family': 'Martian Mono, monospace',
-                    'font-weight': '700',
-                    'text-valign': 'center',
-                    'text-halign': 'center',
-                    'text-wrap': 'wrap',
-                    'text-max-width': '100px',
-                    'width': 'mapData(fileCount, 1, 6, 70, 120)',
-                    'height': 'mapData(fileCount, 1, 6, 70, 120)',
-                    'shape': 'ellipse',
-                    'border-width': 2,
-                    'border-color': 'rgba(255,255,255,0.15)',
-                }
-            },
-            // Change/symbol nodes
-            {
-                selector: 'node[isChange][changeKind="add"]',
-                style: {
-                    'background-color': '#1a3326',
-                    'border-width': 1.5,
-                    'border-color': '#4caf82',
-                    'label': 'data(label)',
-                    'color': '#4caf82',
-                    'font-size': '9px',
-                    'font-family': 'Martian Mono, monospace',
-                    'text-valign': 'center', 'text-halign': 'center',
-                    'text-wrap': 'wrap', 'text-max-width': '80px',
-                    'width': 20, 'height': 20, 'shape': 'diamond',
-                }
-            },
-            {
-                selector: 'node[isChange][changeKind="rem"]',
-                style: {
-                    'background-color': '#331a1a',
-                    'border-width': 1.5,
-                    'border-color': '#e0705a',
-                    'label': 'data(label)',
-                    'color': '#e0705a',
-                    'font-size': '9px',
-                    'font-family': 'Martian Mono, monospace',
-                    'text-valign': 'center', 'text-halign': 'center',
-                    'text-wrap': 'wrap', 'text-max-width': '80px',
-                    'width': 20, 'height': 20, 'shape': 'diamond',
-                }
-            },
-            {
-                selector: 'node[isChange][changeKind="both"]',
-                style: {
-                    'background-color': '#2a2010',
-                    'border-width': 1.5,
-                    'border-color': '#e8c97a',
-                    'label': 'data(label)',
-                    'color': '#e8c97a',
-                    'font-size': '9px',
-                    'font-family': 'Martian Mono, monospace',
-                    'text-valign': 'center', 'text-halign': 'center',
-                    'text-wrap': 'wrap', 'text-max-width': '80px',
-                    'width': 20, 'height': 20, 'shape': 'diamond',
-                }
-            },
-            {
-                selector: 'edge',
-                style: {
-                    'width': 1.5, 'line-color': '#4a4540',
-                    'target-arrow-color': '#4a4540',
-                    'target-arrow-shape': 'triangle',
-                    'curve-style': 'bezier', 'opacity': 0.7,
-                }
-            },
-            { selector: 'edge:hover', style: { 'line-color': '#a09080', 'target-arrow-color': '#a09080', 'opacity': 1, 'width': 2 } },
-            { selector: 'node:selected', style: { 'border-width': 3, 'border-color': 'rgba(255,255,255,0.6)' } },
-        ],
-        layout: {
-            name: 'cose',
-            animate: true, animationDuration: 600,
-            nodeRepulsion: 12000, idealEdgeLength: 160,
-            nodeOverlap: 20, padding: 60, randomize: false,
-        },
-        userZoomingEnabled: true, userPanningEnabled: true,
-    });
-
-    attachTooltip(cy,
-        node => node.data('isChange')
-            ? `<div class="tooltip-title">${node.data('label')}</div>
-         <div class="tooltip-row">Type: <span>${node.data('changeKind') === 'add' ? 'Addition' : node.data('changeKind') === 'rem' ? 'Removal' : 'Modified'}</span></div>`
-            : `<div class="tooltip-title">${node.data('label')}</div>
-         <div class="tooltip-row">Files: <span>${node.data('fileCount')}</span></div>
-         <div class="tooltip-row">Changed symbols: <span>${node.data('symbolCount')}</span></div>`,
-        edge => `<div class="tooltip-title">dependency</div>
-             <div class="tooltip-row">${edge.data('source')} → ${edge.data('target').replace('sym::', '')}</div>`
-    );
-
-    document.getElementById('graphLegend').innerHTML = `
-    <div class="legend-item"><div class="legend-swatch" style="background:#c0392b"></div> Process (size = file count)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#1a3326;border:1.5px solid #4caf82;border-radius:2px;transform:rotate(45deg)"></div> Added symbol</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#331a1a;border:1.5px solid #e0705a;border-radius:2px;transform:rotate(45deg)"></div> Removed symbol</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#2a2010;border:1.5px solid #e8c97a;border-radius:2px;transform:rotate(45deg)"></div> Modified (add+remove)</div>
-  `;
-}
-
-/* ── File graph ──
-   Nodes  = files (grouped by process via compound nodes) + change symbols
-   Edges  = file → symbol (if that symbol appears in the file's class methods)  */
-function renderFileGraph(container) {
-    const entries = Object.entries(affectedProcessMap);
-    if (!entries.length) { showGraphEmpty(container, 'No processes in response.'); return; }
-
-    const changed = allChangedSymbols();
-    const addSymbols = new Set(allChanges.filter(c => c.changeType === 'ADDITION').map(c => c.newParameter).filter(Boolean));
-    const remSymbols = new Set(allChanges.filter(c => c.changeType === 'REMOVAL').map(c => c.oldParameter).filter(Boolean));
 
     const nodes = [];
     const edges = [];
     let eid = 0;
 
-    // Process compound parent nodes
     entries.forEach(([proc, files], i) => {
-        nodes.push({
-            data: { id: `proc::${proc}`, label: proc, isProcess: true, color: procColor(i) }
-        });
+        nodes.push({ data: { id: proc, label: proc, type: 'process', color: procColor(i), fileCount: files.length, symCount: procSyms[proc].size }});
+    });
+    allSyms.forEach(sym => {
+        nodes.push({ data: { id: `s::${sym}`, label: sym, type: 'symbol', kind: symKind(sym, addSet, remSet) }});
+    });
+    entries.forEach(([proc]) => {
+        procSyms[proc].forEach(sym => edges.push({ data: { id: `e${eid++}`, source: proc, target: `s::${sym}`, etype: 'proc-sym' }}));
+    });
+
+    cy = makeCy(container, nodes, edges, sharedStyle());
+    attachTooltip(cy,
+        n => n.data('type') === 'process'
+            ? `<div class="tooltip-title">${n.data('label')}</div><div class="tooltip-row">Files: <span>${n.data('fileCount')}</span></div><div class="tooltip-row">Symbols: <span>${n.data('symCount')}</span></div>`
+            : `<div class="tooltip-title">${n.data('label')}</div><div class="tooltip-row">Change: <span>${kindLabel(n.data('kind'))}</span></div>`,
+        e => `<div class="tooltip-row">${e.data('source')} → <span>${e.data('target').replace('s::','')}</span></div>`
+    );
+    setLegend(false);
+}
+
+/* ── File graph: process → file → symbol ── */
+function renderFileGraph(container) {
+    const entries = Object.entries(affectedProcessMap);
+    if (!entries.length) { showGraphEmpty(container); return; }
+
+    const { addSet, remSet, allSyms } = symbolSets();
+
+    const nodes    = [];
+    const edges    = [];
+    let eid        = 0;
+    const symAdded = new Set();
+
+    entries.forEach(([proc, files], i) => {
+        const pcolor = procColor(i);
+        nodes.push({ data: { id: proc, label: proc, type: 'process', color: pcolor, fileCount: files.length }});
 
         files.forEach(f => {
-            const fname  = f.filename || 'unknown';
-            const lang   = (f.language || '').toLowerCase();
-            const fcolor = lang === 'java' ? '#8b3620' : '#7a600a';
-            const fileSymbols = extractFileSymbols(f);
+            const fid         = `f::${proc}::${f.filename}`;
+            const fileMethods = new Set(f.methods || []);
+            const hits        = [...allSyms].filter(s => fileMethods.has(s));
 
-            // Count how many changed symbols this file touches
-            const hits = [...fileSymbols].filter(s => changed.has(s));
+            nodes.push({ data: { id: fid, label: f.filename || 'unknown', type: 'file', lang: (f.language||'').toLowerCase(), proc, pcolor, hitCount: hits.length }});
+            edges.push({ data: { id: `e${eid++}`, source: proc, target: fid, etype: 'proc-file' }});
 
-            nodes.push({
-                data: {
-                    id: fname,
-                    label: fname.replace(/\.(java|js)$/, ''),
-                    parent: `proc::${proc}`,
-                    lang, color: fcolor,
-                    process: proc,
-                    hitCount: hits.length,
-                    hitSymbols: hits.slice(0, 5).join(', ') || '—',
-                }
-            });
-
-            // File → changed symbol edges
             hits.forEach(sym => {
-                // Add the symbol node if not already added
-                if (!nodes.find(n => n.data.id === `sym::${sym}`)) {
-                    const kind = addSymbols.has(sym) && remSymbols.has(sym) ? 'both'
-                        : addSymbols.has(sym) ? 'add' : 'rem';
-                    nodes.push({
-                        data: { id: `sym::${sym}`, label: sym, isChange: true, changeKind: kind }
-                    });
+                const sid = `s::${sym}`;
+                if (!symAdded.has(sym)) {
+                    nodes.push({ data: { id: sid, label: sym, type: 'symbol', kind: symKind(sym, addSet, remSet) }});
+                    symAdded.add(sym);
                 }
-                edges.push({ data: { id: `fe${eid++}`, source: fname, target: `sym::${sym}` } });
+                edges.push({ data: { id: `e${eid++}`, source: fid, target: sid, etype: 'file-sym' }});
             });
         });
     });
 
-    // If no file→symbol edges were created (no class/method data in response),
-    // fall back: connect every file in the process to every changed symbol
-    if (edges.length === 0) {
-        changed.forEach(sym => {
-            if (!nodes.find(n => n.data.id === `sym::${sym}`)) {
-                const kind = addSymbols.has(sym) && remSymbols.has(sym) ? 'both'
-                    : addSymbols.has(sym) ? 'add' : 'rem';
-                nodes.push({ data: { id: `sym::${sym}`, label: sym, isChange: true, changeKind: kind } });
+    // fallback if no methods[] data — direct process→symbol
+    if (!edges.some(e => e.data.etype === 'file-sym')) {
+        allSyms.forEach(sym => {
+            if (!symAdded.has(sym)) {
+                nodes.push({ data: { id: `s::${sym}`, label: sym, type: 'symbol', kind: symKind(sym, addSet, remSet) }});
+                symAdded.add(sym);
             }
-        });
-        entries.forEach(([, files]) => {
-            files.forEach(f => {
-                const fname = f.filename || 'unknown';
-                changed.forEach(sym => {
-                    edges.push({ data: { id: `fe${eid++}`, source: fname, target: `sym::${sym}` } });
-                });
-            });
+            entries.forEach(([proc]) =>
+                edges.push({ data: { id: `e${eid++}`, source: proc, target: `s::${sym}`, etype: 'proc-sym' }})
+            );
         });
     }
 
-    cy = cytoscape({
+    cy = makeCy(container, nodes, edges, sharedStyle());
+    attachTooltip(cy,
+        n => {
+            if (n.data('type') === 'process') return `<div class="tooltip-title">${n.data('label')}</div><div class="tooltip-row">Files: <span>${n.data('fileCount')}</span></div>`;
+            if (n.data('type') === 'file')    return `<div class="tooltip-title">${n.data('label')}</div><div class="tooltip-row">Process: <span>${n.data('proc')}</span></div><div class="tooltip-row">Symbols hit: <span>${n.data('hitCount')}</span></div>`;
+            return `<div class="tooltip-title">${n.data('label')}</div><div class="tooltip-row">Change: <span>${kindLabel(n.data('kind'))}</span></div>`;
+        },
+        e => {
+            if (e.data('etype') === 'proc-file') return `<div class="tooltip-row">${e.data('source')} contains <span>${e.data('target').split('::')[2]}</span></div>`;
+            return `<div class="tooltip-row">${(e.data('source').split('::')[2]||e.data('source'))} touches <span>${e.data('target').replace('s::','')}</span></div>`;
+        }
+    );
+    setLegend(true);
+}
+
+/* ─────────────────────────────────────────
+   Cytoscape helpers
+───────────────────────────────────────── */
+function makeCy(container, nodes, edges, style) {
+    return cytoscape({
         container,
         elements: { nodes, edges },
-        style: [
-            // Process compound
-            {
-                selector: 'node[isProcess]',
-                style: {
-                    'background-color': 'data(color)', 'background-opacity': 0.06,
-                    'border-width': 1.5, 'border-color': 'data(color)', 'border-opacity': 0.5,
-                    'label': 'data(label)', 'color': 'data(color)',
-                    'font-size': '11px', 'font-family': 'Martian Mono, monospace', 'font-weight': '700',
-                    'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -10,
-                    'shape': 'roundrectangle', 'padding': '28px',
-                }
-            },
-            // File nodes
-            {
-                selector: 'node:not([isProcess]):not([isChange])',
-                style: {
-                    'background-color': 'data(color)', 'background-opacity': 0.9,
-                    'label': 'data(label)', 'color': '#f0ece4',
-                    'font-size': '9px', 'font-family': 'Martian Mono, monospace', 'font-weight': '500',
-                    'text-valign': 'center', 'text-halign': 'center',
-                    'text-wrap': 'wrap', 'text-max-width': '80px',
-                    'width': 88, 'height': 34, 'shape': 'roundrectangle',
-                    'border-width': 0,
-                }
-            },
-            // Change symbol nodes
-            {
-                selector: 'node[isChange][changeKind="add"]',
-                style: {
-                    'background-color': '#1a3326', 'border-width': 1.5, 'border-color': '#4caf82',
-                    'label': 'data(label)', 'color': '#4caf82',
-                    'font-size': '9px', 'font-family': 'Martian Mono, monospace',
-                    'text-valign': 'center', 'text-halign': 'center',
-                    'text-wrap': 'wrap', 'text-max-width': '80px',
-                    'width': 22, 'height': 22, 'shape': 'diamond',
-                }
-            },
-            {
-                selector: 'node[isChange][changeKind="rem"]',
-                style: {
-                    'background-color': '#331a1a', 'border-width': 1.5, 'border-color': '#e0705a',
-                    'label': 'data(label)', 'color': '#e0705a',
-                    'font-size': '9px', 'font-family': 'Martian Mono, monospace',
-                    'text-valign': 'center', 'text-halign': 'center',
-                    'text-wrap': 'wrap', 'text-max-width': '80px',
-                    'width': 22, 'height': 22, 'shape': 'diamond',
-                }
-            },
-            {
-                selector: 'node[isChange][changeKind="both"]',
-                style: {
-                    'background-color': '#2a2010', 'border-width': 1.5, 'border-color': '#e8c97a',
-                    'label': 'data(label)', 'color': '#e8c97a',
-                    'font-size': '9px', 'font-family': 'Martian Mono, monospace',
-                    'text-valign': 'center', 'text-halign': 'center',
-                    'text-wrap': 'wrap', 'text-max-width': '80px',
-                    'width': 22, 'height': 22, 'shape': 'diamond',
-                }
-            },
-            {
-                selector: 'edge',
-                style: {
-                    'width': 1.5, 'line-color': '#4a4540',
-                    'target-arrow-color': '#4a4540', 'target-arrow-shape': 'triangle',
-                    'curve-style': 'bezier', 'opacity': 0.65,
-                }
-            },
-            { selector: 'edge:hover', style: { 'line-color': '#a09080', 'target-arrow-color': '#a09080', 'opacity': 1, 'width': 2 } },
-            { selector: 'node:selected', style: { 'border-width': 2, 'border-color': 'rgba(255,255,255,0.6)' } },
-        ],
+        style,
         layout: {
             name: 'cose',
-            animate: true, animationDuration: 700,
-            nodeRepulsion: 8000, idealEdgeLength: 130,
-            nodeOverlap: 10, padding: 50, componentSpacing: 80,
+            animate: true, animationDuration: 550,
+            nodeRepulsion: 12000,
+            idealEdgeLength: 160,
+            nodeOverlap: 24,
+            padding: 80,
+            randomize: false,
+            componentSpacing: 80,
+            gravity: 0.3,
+            numIter: 1000,
         },
-        userZoomingEnabled: true, userPanningEnabled: true,
+        userZoomingEnabled: true,
+        userPanningEnabled: true,
+        boxSelectionEnabled: false,
+        minZoom: 0.1,
+        maxZoom: 5,
     });
-
-    attachTooltip(cy,
-        node => node.data('isChange')
-            ? `<div class="tooltip-title">${node.data('label')}</div>
-         <div class="tooltip-row">Type: <span>${node.data('changeKind') === 'add' ? 'Addition' : node.data('changeKind') === 'rem' ? 'Removal' : 'Modified'}</span></div>`
-            : `<div class="tooltip-title">${node.data('label')}</div>
-         <div class="tooltip-row">Process: <span>${node.data('process')}</span></div>
-         <div class="tooltip-row">Language: <span>${(node.data('lang') || '').toUpperCase()}</span></div>
-         <div class="tooltip-row">Symbols touched: <span>${node.data('hitCount')}</span></div>`,
-        edge => `<div class="tooltip-title">touches</div>
-             <div class="tooltip-row">${edge.data('source').replace(/\.(java|js)$/, '')} → ${edge.data('target').replace('sym::', '')}</div>`
-    );
-
-    document.getElementById('graphLegend').innerHTML = `
-    <div class="legend-item"><div class="legend-swatch" style="background:#8b3620"></div> Java file</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#7a600a"></div> JS file</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#1a3326;border:1.5px solid #4caf82;border-radius:2px;transform:rotate(45deg)"></div> Added symbol</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#331a1a;border:1.5px solid #e0705a;border-radius:2px;transform:rotate(45deg)"></div> Removed symbol</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#2a2010;border:1.5px solid #e8c97a;border-radius:2px;transform:rotate(45deg)"></div> Modified (add+rem)</div>
-  `;
 }
 
-function showGraphEmpty(container, msg) {
-    container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#786a5a;font-family:Martian Mono,monospace;font-size:12px;">${msg}</div>`;
+function sharedStyle() {
+    return [
+        // Process
+        {
+            selector: 'node[type="process"]',
+            style: {
+                'background-color': 'data(color)', 'background-opacity': 0.88,
+                'label': 'data(label)', 'color': '#f0ece4',
+                'font-size': '13px', 'font-family': 'Martian Mono, monospace', 'font-weight': '700',
+                'text-valign': 'center', 'text-halign': 'center',
+                'width': 'mapData(fileCount, 1, 8, 80, 150)',
+                'height': 'mapData(fileCount, 1, 8, 80, 150)',
+                'shape': 'ellipse', 'border-width': 2, 'border-color': 'rgba(255,255,255,0.18)',
+            }
+        },
+        // File
+        {
+            selector: 'node[type="file"]',
+            style: {
+                'background-color': '#272220', 'background-opacity': 1,
+                'border-width': 1.5, 'border-color': 'data(pcolor)', 'border-opacity': 0.55,
+                'label': 'data(label)', 'color': '#b8b4ac',
+                'font-size': '9px', 'font-family': 'Martian Mono, monospace', 'font-weight': '500',
+                'text-valign': 'center', 'text-halign': 'center',
+                'text-wrap': 'none',
+                'width': 100, 'height': 30, 'shape': 'roundrectangle',
+            }
+        },
+        { selector: 'node[type="file"]:hover', style: { 'background-color': '#38302a', 'color': '#f0ece4', 'border-opacity': 1 }},
+        // Symbol additions
+        {
+            selector: 'node[type="symbol"][kind="add"]',
+            style: {
+                'background-color': '#1a3624', 'border-width': 1.5, 'border-color': '#5ab882',
+                'label': 'data(label)', 'color': '#5ab882',
+                'font-size': '9px', 'font-family': 'Martian Mono, monospace',
+                'text-valign': 'bottom', 'text-halign': 'center', 'text-margin-y': 6,
+                'text-wrap': 'none',
+                'width': 14, 'height': 14, 'shape': 'diamond',
+            }
+        },
+        // Symbol removals
+        {
+            selector: 'node[type="symbol"][kind="rem"]',
+            style: {
+                'background-color': '#361a1a', 'border-width': 1.5, 'border-color': '#cc5a48',
+                'label': 'data(label)', 'color': '#cc5a48',
+                'font-size': '9px', 'font-family': 'Martian Mono, monospace',
+                'text-valign': 'bottom', 'text-halign': 'center', 'text-margin-y': 6,
+                'text-wrap': 'none',
+                'width': 14, 'height': 14, 'shape': 'diamond',
+            }
+        },
+        // Symbol both
+        {
+            selector: 'node[type="symbol"][kind="both"]',
+            style: {
+                'background-color': '#2e2010', 'border-width': 1.5, 'border-color': '#c8a840',
+                'label': 'data(label)', 'color': '#c8a840',
+                'font-size': '9px', 'font-family': 'Martian Mono, monospace',
+                'text-valign': 'bottom', 'text-halign': 'center', 'text-margin-y': 6,
+                'text-wrap': 'none',
+                'width': 14, 'height': 14, 'shape': 'diamond',
+            }
+        },
+        { selector: 'node[type="symbol"]:hover', style: { 'width': 18, 'height': 18, 'border-width': 2 }},
+        // Edges
+        { selector: 'edge[etype="proc-file"]', style: { 'width': 1.5, 'line-color': '#3a3530', 'target-arrow-color': '#3a3530', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'opacity': 0.5 }},
+        { selector: 'edge[etype="file-sym"]',  style: { 'width': 1,   'line-color': '#524840', 'target-arrow-color': '#524840', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'opacity': 0.65 }},
+        { selector: 'edge[etype="proc-sym"]',  style: { 'width': 1,   'line-color': '#524840', 'target-arrow-color': '#524840', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'opacity': 0.55 }},
+        { selector: 'edge',                    style: { 'width': 1.5, 'line-color': '#4a4540', 'target-arrow-color': '#4a4540', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'opacity': 0.6 }},
+        { selector: 'edge:hover',              style: { 'line-color': '#a09080', 'target-arrow-color': '#a09080', 'opacity': 1, 'width': 2 }},
+        { selector: 'node:selected',           style: { 'border-width': 3, 'border-color': 'rgba(255,255,255,0.65)', 'border-opacity': 1 }},
+    ];
 }
 
-/* ── Tooltip helper ── */
-function attachTooltip(cyInstance, nodeHtml, edgeHtml) {
+function attachTooltip(cyInst, nodeHtml, edgeHtml) {
     const tooltip = document.getElementById('graphTooltip');
-    const container = document.getElementById('graphContainer');
-
-    cyInstance.on('mouseover', 'node:not([isProcess])', evt => {
+    cyInst.on('mouseover', 'node[type]', evt => {
         const pos = evt.renderedPosition;
-        const rect = container.getBoundingClientRect();
         tooltip.innerHTML = nodeHtml(evt.target);
-        tooltip.style.left = (pos.x + 12) + 'px';
-        tooltip.style.top  = (pos.y - 10) + 'px';
+        tooltip.style.left = (pos.x + 14) + 'px';
+        tooltip.style.top  = Math.max(8, pos.y - 14) + 'px';
         tooltip.classList.add('visible');
     });
-
-    cyInstance.on('mouseover', 'edge', evt => {
+    cyInst.on('mouseover', 'edge', evt => {
         const pos = evt.renderedPosition;
         tooltip.innerHTML = edgeHtml(evt.target);
-        tooltip.style.left = (pos.x + 12) + 'px';
-        tooltip.style.top  = (pos.y - 10) + 'px';
+        tooltip.style.left = (pos.x + 14) + 'px';
+        tooltip.style.top  = Math.max(8, pos.y - 14) + 'px';
         tooltip.classList.add('visible');
     });
+    cyInst.on('mouseout',  'node, edge', () => tooltip.classList.remove('visible'));
+    cyInst.on('pan zoom',  ()           => tooltip.classList.remove('visible'));
+}
 
-    cyInstance.on('mouseout', 'node, edge', () => tooltip.classList.remove('visible'));
+function showGraphEmpty(container) {
+    container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#786a5a;font-family:Martian Mono,monospace;font-size:12px;">No graph data available.</div>`;
+}
+
+function setLegend(showFile) {
+    document.getElementById('graphLegend').innerHTML = `
+    <div class="legend-item"><div class="legend-swatch" style="background:#9b3a2a;border-radius:50%"></div> Process</div>
+    ${showFile ? '<div class="legend-item"><div class="legend-swatch square" style="background:#272220;border:1.5px solid #666;border-radius:2px"></div> File</div>' : ''}
+    <div class="legend-item"><div class="legend-swatch" style="background:#1a3624;border:1.5px solid #5ab882;border-radius:2px;transform:rotate(45deg);width:9px;height:9px;flex-shrink:0"></div> Added</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#361a1a;border:1.5px solid #cc5a48;border-radius:2px;transform:rotate(45deg);width:9px;height:9px;flex-shrink:0"></div> Removed</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#2e2010;border:1.5px solid #c8a840;border-radius:2px;transform:rotate(45deg);width:9px;height:9px;flex-shrink:0"></div> Modified</div>
+  `;
 }
 
 /* ─────────────────────────────────────────
    Graph controls
 ───────────────────────────────────────── */
-function fitGraph()  { if (cy) cy.fit(undefined, 40); }
-function zoomIn()    { if (cy) cy.zoom({ level: cy.zoom() * 1.25, renderedPosition: { x: cy.width()/2, y: cy.height()/2 } }); }
-function zoomOut()   { if (cy) cy.zoom({ level: cy.zoom() * 0.8,  renderedPosition: { x: cy.width()/2, y: cy.height()/2 } }); }
+function fitGraph() { if (cy) cy.fit(undefined, 60); }
+function zoomIn()   { if (cy) cy.zoom({ level: cy.zoom() * 1.3,  renderedPosition: { x: cy.width()/2, y: cy.height()/2 } }); }
+function zoomOut()  { if (cy) cy.zoom({ level: cy.zoom() * 0.77, renderedPosition: { x: cy.width()/2, y: cy.height()/2 } }); }
 
 function switchGraph(type, btn) {
     activeGraph = type;
@@ -639,11 +439,7 @@ function switchView(view, btn) {
     document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
     document.getElementById('view-' + view).style.display = 'block';
     btn.classList.add('active');
-
-    if (view === 'graph') {
-        // small delay so container has dimensions
-        setTimeout(renderGraph, 80);
-    }
+    if (view === 'graph') setTimeout(renderGraph, 80);
 }
 
 /* ─────────────────────────────────────────
@@ -659,17 +455,30 @@ function setFilter(btn) {
 function applyFilters() {
     const search = (document.getElementById('searchBox').value || '').toLowerCase();
     document.querySelectorAll('.change-row').forEach(row => {
-        const typeMatch = activeFilter === 'all'
-            || row.dataset.type === activeFilter
-            || row.dataset.category === activeFilter;
-        const searchMatch = !search || row.dataset.param.includes(search);
-        row.style.display = typeMatch && searchMatch ? 'grid' : 'none';
+        const tm = activeFilter === 'all' || row.dataset.type === activeFilter || row.dataset.category === activeFilter;
+        const sm = !search || row.dataset.param.includes(search);
+        row.style.display = tm && sm ? 'grid' : 'none';
     });
 }
 
 /* ─────────────────────────────────────────
-   Helpers
+   Utility
 ───────────────────────────────────────── */
+function symbolSets() {
+    const addSet = new Set(allChanges.filter(c => c.changeType === 'ADDITION').map(c => c.newParameter).filter(Boolean));
+    const remSet = new Set(allChanges.filter(c => c.changeType === 'REMOVAL').map(c => c.oldParameter).filter(Boolean));
+    const allSyms = new Set([...addSet, ...remSet]);
+    return { addSet, remSet, allSyms };
+}
+
+function symKind(sym, addSet, remSet) {
+    return addSet.has(sym) && remSet.has(sym) ? 'both' : addSet.has(sym) ? 'add' : 'rem';
+}
+
+function kindLabel(k) {
+    return k === 'add' ? 'Addition' : k === 'rem' ? 'Removal' : 'Modified (add+remove)';
+}
+
 function guessCategory(p) {
     if (!p) return 'unknown';
     if (p.includes('.') && /^[a-z]/.test(p)) return 'import';
@@ -678,8 +487,7 @@ function guessCategory(p) {
 }
 
 function setStatus(cls, label) {
-    const dot = document.getElementById('statusDot');
-    dot.className = 'status-dot ' + cls;
+    document.getElementById('statusDot').className = 'status-dot ' + cls;
     document.getElementById('statusLabel').textContent = label;
 }
 
@@ -690,29 +498,16 @@ function showError(msg) {
 }
 
 function esc(s) {
-    return String(s || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function counter(id, target) {
     const el = document.getElementById(id);
-    let val = 0;
+    let val  = 0;
     const step = Math.max(1, Math.ceil(target / 18));
-    const iv = setInterval(() => {
-        val = Math.min(val + step, target);
-        el.textContent = val;
-        if (val >= target) clearInterval(iv);
-    }, 28);
+    const iv = setInterval(() => { val = Math.min(val + step, target); el.textContent = val; if (val >= target) clearInterval(iv); }, 28);
 }
 
-/* ─────────────────────────────────────────
-   Keyboard shortcuts
-───────────────────────────────────────── */
 document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && document.activeElement === document.getElementById('repoUrl')) {
-        runAnalysis();
-    }
+    if (e.key === 'Enter' && document.activeElement === document.getElementById('repoUrl')) runAnalysis();
 });
