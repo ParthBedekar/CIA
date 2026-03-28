@@ -21,6 +21,9 @@ public class RegistryService {
             manager = new GitManager(url, base);
             Path repoPath = manager.cloneRepo();
             List<String> hashes = manager.getCommitHashes(repoPath);
+            if (hashes.size() < 2) {
+                throw new RuntimeException("Repository must have at least 2 commits to analyze. Found: " + hashes.size());
+            }
             List<String> changedFiles = manager.getChangedFiles(repoPath, hashes.get(0), hashes.get(1));
             List<Path> snapshots = manager.createSnapshots(hashes, repoPath, changedFiles);
             repoRegistryMap.put(url, new RepoRegistry(repoPath, snapshots.get(0), snapshots.get(1), hashes.get(0), hashes.get(1), changedFiles));
@@ -29,6 +32,9 @@ public class RegistryService {
             Path repoPath = repoRegistryMap.get(url).getClonedPath();
             manager.pullRepo(repoPath);
             List<String> hashes = manager.getCommitHashes(repoPath);
+            if (hashes.size() < 2) {
+                throw new RuntimeException("Repository must have at least 2 commits to analyze. Found: " + hashes.size());
+            }
             RepoRegistry existing = repoRegistryMap.get(url);
             if (!hashes.get(0).equals(existing.getCurrentHash())) {
                 List<String> changedFiles = manager.getChangedFiles(repoPath, hashes.get(0), hashes.get(1));

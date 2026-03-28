@@ -1,10 +1,8 @@
 package org.app.cia.api;
 
 import org.app.cia.CoreService;
-import org.app.cia.analysis.ImpactReport;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.nio.file.Paths;
 
 @CrossOrigin(origins = "*")
 @RestController
@@ -18,12 +16,16 @@ public class AnalysisController {
     }
 
     @PostMapping("/analyze")
-    public ImpactReport analyze(@RequestBody AnalysisRequest request) {
-        coreService.extractAndBuild(request.getUrl());
-        coreService.buildGraph();
-        coreService.computeDiff();
-        coreService.analyzeImpact();
-        coreService.persistGraph();
-        return coreService.getImpactReport();
+    public ResponseEntity<?> analyze(@RequestBody AnalysisRequest request) {
+        try {
+            coreService.extractAndBuild(request.getUrl());
+            coreService.buildGraph();
+            coreService.computeDiff();
+            coreService.analyzeImpact();
+            coreService.persistGraph();
+            return ResponseEntity.ok(coreService.getImpactReport());
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

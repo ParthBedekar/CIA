@@ -1,6 +1,5 @@
 package org.app.cia.ingestion;
 
-import org.apache.commons.io.FileUtils;
 import org.app.cia.ingestion.Exceptions.GitOperationException;
 
 import java.io.BufferedReader;
